@@ -314,15 +314,19 @@ class MVPP(object):
         return np.array(gradients)
 
     def mvppLearn(self, models):
+        start_time = time.time()
         probs = [self.prob_of_interpretation(model) for model in models]
+        print(f"Prob time: {time.time() - start_time}")
         gradients = np.array([[0.0 for item in l] for l in self.parameters])
         if len(models) != 0:
             # we compute the gradients w.r.t. the probs in each rule
+            start_time = time.time()
             for ruleIdx,list_of_bools in enumerate(self.learnable):
                 gradients[ruleIdx] = self.mvppLearnRule(ruleIdx, models, probs)
                 for atomIdx, b in enumerate(list_of_bools):
                     if b == False:
                         gradients[ruleIdx][atomIdx] = 0
+            print(f"Gradient time: {time.time() - start_time}")
         return gradients
 
     # gradients are stored in numpy array instead of list
@@ -332,10 +336,12 @@ class MVPP(object):
         @param obs: a string for observation
         @param opt: a Boolean denoting whether we use optimal stable models instead of stable models
         """
+        start_time = time.time()
         if opt:
             models = self.find_all_opt_SM_under_obs_WC(obs)
         else:
             models = self.find_k_SM_under_obs(obs, k=0)
+        print(f"Stable model time: {time.time() - start_time}")
         return self.mvppLearn(models)
 
     # gradients are stored in numpy array instead of list
