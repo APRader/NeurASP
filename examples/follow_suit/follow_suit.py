@@ -98,8 +98,8 @@ player(p1). player(p2). player(p3). player(p4).
 rank_higher(P1, P2) :- rank(P1, R1), rank(P2, R2), rank_value(R1, V1), rank_value(R2, V2), V1 > V2.
 
 
-loser(X) :- suit(1,S1), suit(X,S2), player(X), suit(S1), suit(S2), S1 != S2.
-loser(X) :- rank_higher(Y,X), suit(1,S), suit(Y,S), player(X), player(Y), suit(S).
+loser(X) :- suit(p1,S1), suit(X,S2), player(X), suit(S1), suit(S2), S1 != S2.
+loser(X) :- rank_higher(Y,X), suit(p1,S), suit(Y,S), player(X), player(Y), suit(S).
 winner(X) :- player(X), not loser(X).
 
 nn(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P).
@@ -112,7 +112,7 @@ rank(P,R) :- card(0,P,C), rank_value(R,C\\13+2).
 '''
 
 ########
-# Define nnMapping and optimizers, initialze NeurASP object
+# Define nnMapping and optimizers, initialize NeurASP object
 ########
 
 m = Net()

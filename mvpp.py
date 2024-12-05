@@ -113,6 +113,12 @@ class MVPP(object):
                     prob = prob * self.parameters[ruleIdx][atomIdx]
         return prob
 
+    def prob_of_interpretation_new(self, models):
+        net_confs = np.array(self.parameters)
+        one_hot = np.eye(len(net_confs[0]))[models]
+        probs = np.multiply(one_hot, net_confs).sum(2).prod(1)
+        return probs
+
     # we assume obs is a string containing a valid Clingo program, 
     # and each obs is written in constraint form
     def find_one_SM_under_obs(self, obs):
@@ -139,6 +145,24 @@ class MVPP(object):
         clingo_control.solve(on_model = lambda model: models.append(model.symbols(atoms=True)))
         models = [[str(atom) for atom in model] for model in models]
         return models
+
+    def model_to_network_preds(self, m):
+        m = sorted(str(m).split(' '))
+        # Extract network predictions from stable model
+        m = [int(f.split(f'card(0,p{idx + 1},')[1].split(')')[0]) for idx, f in enumerate(m)]
+        return m
+
+    def find_k_SM_under_obs_new(self, obs, k=3):
+        program = self.pi_prime + obs + "#show card/3."
+        clingo_control = Control(["--warn=none", str(k)])
+        models = []
+        try:
+            clingo_control.add("base", [], program)
+        except:
+            print("\nPi': \n{}".format(program))
+        clingo_control.ground([("base", [])])
+        clingo_control.solve(on_model = lambda model: models.append(self.model_to_network_preds(model)))
+        return np.array(models)
 
     # k = 0 means to find all stable models
     def find_k_SM_under_obs(self, obs, k=3):
@@ -313,20 +337,46 @@ class MVPP(object):
                     gradients.append(numerator / denominator)
         return np.array(gradients)
 
-    def mvppLearn(self, models):
+    def mvppLearnRuleNew(self, models, probs, num_out):
+        nn_confs = np.array(self.parameters)
+        denominator = sum(probs)
+        if denominator == 0:
+            return [0 for _ in range(num_out)]
+        nums_out = np.arange(num_out)[:, np.newaxis, np.newaxis]
+        num_ims = len(nn_confs)
+
+        weighted_probs = probs[:, np.newaxis] / nn_confs[np.arange(num_ims), models]
+        multiplication_factor = np.where(models == nums_out, 1, -1)
+        gradients = (weighted_probs * multiplication_factor).sum(1) / denominator
+
+        return gradients.T
+
+    def mvppLearn(self, models, new_models=None):
+        start_time = time.time()
+        new_probs = self.prob_of_interpretation_new(new_models)
+        print(f"New prob time: {time.time() - start_time}")
+
         start_time = time.time()
         probs = [self.prob_of_interpretation(model) for model in models]
-        print(f"Prob time: {time.time() - start_time}")
+        print(f"Old prob time: {time.time() - start_time}")
+
         gradients = np.array([[0.0 for item in l] for l in self.parameters])
+
         if len(models) != 0:
             # we compute the gradients w.r.t. the probs in each rule
+
+            start_time = time.time()
+            new_gradients = self.mvppLearnRuleNew(new_models, new_probs, len(gradients[0]))
+            print(f"New gradient time: {time.time() - start_time}")
+
             start_time = time.time()
             for ruleIdx,list_of_bools in enumerate(self.learnable):
                 gradients[ruleIdx] = self.mvppLearnRule(ruleIdx, models, probs)
                 for atomIdx, b in enumerate(list_of_bools):
                     if b == False:
                         gradients[ruleIdx][atomIdx] = 0
-            print(f"Gradient time: {time.time() - start_time}")
+            print(f"Old gradient time: {time.time() - start_time}")
+
         return gradients
 
     # gradients are stored in numpy array instead of list
@@ -337,12 +387,17 @@ class MVPP(object):
         @param opt: a Boolean denoting whether we use optimal stable models instead of stable models
         """
         start_time = time.time()
+        new_models = self.find_k_SM_under_obs_new(obs, k=0)
+        print(f"New stable model time: {time.time() - start_time}")
+
+        start_time = time.time()
         if opt:
             models = self.find_all_opt_SM_under_obs_WC(obs)
         else:
             models = self.find_k_SM_under_obs(obs, k=0)
-        print(f"Stable model time: {time.time() - start_time}")
-        return self.mvppLearn(models)
+        print(f"Old stable model time: {time.time() - start_time}")
+
+        return self.mvppLearn(models, new_models)
 
     # gradients are stored in numpy array instead of list
     def gradients_multi_obs(self, list_of_obs):
