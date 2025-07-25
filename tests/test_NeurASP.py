@@ -1,6 +1,7 @@
 import unittest
 import unittest.mock as mock
 import numpy as np
+import torch
 
 from mvpp import MVPP
 
@@ -24,9 +25,14 @@ class TestNeurASP(unittest.TestCase):
             ['test(i1,1)', 'test(i2,3)', 'test(i3,3)', 'test(i4,0)', 'test(i5,0)', 'test(i6,2)', 'test(i7,2)',
              'test(i8,1)', 'test(i9,0)']
         ]
-
         Is_new = [[3, 0, 3, 1, 3, 3, 3, 0, 3], [0, 3, 1, 1, 2, 2, 0, 1, 3], [0, 2, 1, 1, 2, 1, 2, 0, 3],
                   [0, 3, 1, 0, 2, 1, 1, 0, 1], [0, 3, 3, 0, 0, 2, 1, 1, 2], [1, 3, 3, 0, 0, 2, 2, 1, 0]]
+        model_idx_list = [[(0, 3), (1, 0), (2, 3), (3, 1), (4, 3), (5, 3), (6, 3), (7, 0), (8, 3)],
+                          [(0, 0), (1, 3), (2, 1), (3, 1), (4, 2), (5, 2), (6, 0), (7, 1), (8, 3)],
+                          [(0, 0), (1, 2), (2, 1), (3, 1), (4, 2), (5, 1), (6, 2), (7, 0), (8, 3)],
+                          [(0, 0), (1, 3), (2, 1), (3, 0), (4, 2), (5, 1), (6, 1), (7, 0), (8, 1)],
+                          [(0, 0), (1, 3), (2, 3), (3, 0), (4, 0), (5, 2), (6, 1), (7, 1), (8, 2)],
+                          [(0, 1), (1, 3), (2, 3), (3, 0), (4, 0), (5, 2), (6, 2), (7, 1), (8, 0)]]
 
         # 4 outputs per image
         pc = [
@@ -48,16 +54,19 @@ class TestNeurASP(unittest.TestCase):
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
 
         probs = [0.00003969, 0.00006075, 0, 0, 0.000015876, 0]
-        old_probs = []
+        neurasp_probs = []
+        slash_probs = []
 
         with (mock.patch.object(MVPP, 'parse', return_value = mock_return),
               mock.patch.object(MVPP, 'normalize_probs')):
             mvpp = MVPP('')
-            for I in Is:
-                old_probs.append(mvpp.prob_of_interpretation(I))
+            for i in range(len(Is)):
+                neurasp_probs.append(mvpp.prob_of_interpretation(Is[i]))
+                slash_probs.append((mvpp.prob_of_interpretation_slash(Is[i], model_idx_list[i])))
             new_probs = mvpp.prob_of_interpretation_new(Is_new)
 
-        np.testing.assert_almost_equal(old_probs, probs)
+        np.testing.assert_almost_equal(neurasp_probs, probs)
+        np.testing.assert_almost_equal(slash_probs, probs)
         np.testing.assert_almost_equal(new_probs, probs)
 
     def test_mvppLearnRule(self):
@@ -85,6 +94,14 @@ class TestNeurASP(unittest.TestCase):
         models_new = [[1, 0, 0, 5, 7, 7, 5, 3, 2], [6, 2, 0, 1, 0, 6, 4, 5, 8], [5, 1, 8, 6, 1, 2, 4, 6, 4],
                       [8, 8, 3, 0, 7, 0, 3, 1, 3], [2, 4, 7, 1, 3, 3, 5, 1, 2], [3, 3, 5, 3, 8, 8, 3, 0, 2],
                       [3, 4, 8, 5, 8, 5, 2, 0, 4], [7, 4, 3, 1, 0, 2, 5, 7, 6]]
+        model_idx_list = [[(0, 1), (1, 0), (2, 0), (3, 5), (4, 7), (5, 7), (6, 5), (7, 3), (8, 2)],
+                          [(0, 6), (1, 2), (2, 0), (3, 1), (4, 0), (5, 6), (6, 4), (7, 5), (8, 8)],
+                          [(0, 5), (1, 1), (2, 8), (3, 6), (4, 1), (5, 2), (6, 4), (7, 6), (8, 4)],
+                          [(0, 8), (1, 8), (2, 3), (3, 0), (4, 7), (5, 0), (6, 3), (7, 1), (8, 3)],
+                          [(0, 2), (1, 4), (2, 7), (3, 1), (4, 3), (5, 3), (6, 5), (7, 1), (8, 2)],
+                          [(0, 3), (1, 3), (2, 5), (3, 3), (4, 8), (5, 8), (6, 3), (7, 0), (8, 2)],
+                          [(0, 3), (1, 4), (2, 8), (3, 5), (4, 8), (5, 5), (6, 2), (7, 0), (8, 4)],
+                          [(0, 7), (1, 4), (2, 3), (3, 1), (4, 0), (5, 2), (6, 5), (7, 7), (8, 6)]]
 
         # 9 outputs per image
         pc = [
@@ -116,6 +133,8 @@ class TestNeurASP(unittest.TestCase):
                     [0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0, 0.1], [0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3],
                     [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.2]]
 
+        selection_mask = torch.tensor([[True for _ in range(9)] for _ in range(9)])
+
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
 
         grads = [[-9, -9, -8.5, -3, -9, -9, -8.5, -8, 1], [-10, -10, -9, -4, -7, -10, -10, -10, 0],
@@ -124,14 +143,20 @@ class TestNeurASP(unittest.TestCase):
                  [0.5, -9.5, -7.5, -9, -9.5, -9.5, -9, -9.5, -3.5],
                  [-9, -9, -9, 7, -8.5, -7.5, -9, -9, -9], [-3.5, 1.5, -9.5, -9.5, -9.5, -8.5, -9.5, -8.5, -9.5],
                  [-9.75, -9.75, -2.75, 0.25, -9.75, -9.75, -7.75, -9.75, -9.25]]
-        old_grads = []
+        neurasp_grads = []
 
         with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
               mock.patch.object(MVPP, 'normalize_probs')):
             mvpp = MVPP('')
+            mvpp.max_n = 9
+            mvpp.M = torch.tensor(parameters)
+            mvpp.binary_rule_belongings = {}
+            mvpp.selection_mask = selection_mask
             for ruleIdx in range(9):
-                old_grads.append(mvpp.mvppLearnRule(ruleIdx, models, probs))
+                neurasp_grads.append(mvpp.mvppLearnRule(ruleIdx, models, probs))
+            slash_grads = mvpp.mvppLearnRuleSlash(models, model_idx_list, 'cpu', torch.tensor(probs))
             new_grads = mvpp.mvppLearnRuleNew(models_new, np.array(probs), 9)
 
-        np.testing.assert_almost_equal(old_grads, grads)
+        np.testing.assert_almost_equal(neurasp_grads, grads)
+        np.testing.assert_almost_equal(slash_grads, grads)
         np.testing.assert_almost_equal(new_grads, grads)

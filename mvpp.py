@@ -1,9 +1,11 @@
 import itertools
+from itertools import count
 import math
 import os.path
 import re
 import sys
 import time
+import torch
 
 from clingo.control import Control
 import numpy as np
@@ -118,6 +120,16 @@ class MVPP(object):
         one_hot = np.eye(len(net_confs[0]))[models]
         probs = np.multiply(one_hot, net_confs).sum(2).prod(1)
         return probs
+
+    def prob_of_interpretation_slash(self, I, model_idx_list=None):
+        prob = 1.0
+
+        # if we have indices
+        if model_idx_list is not None:
+            prob = 1.0
+            for rule_idx, atom_idx in model_idx_list:
+                prob *= self.parameters[rule_idx][atom_idx]
+            return prob
 
     # we assume obs is a string containing a valid Clingo program, 
     # and each obs is written in constraint form
@@ -350,6 +362,85 @@ class MVPP(object):
         gradients = (weighted_probs * multiplication_factor).sum(1) / denominator
 
         return gradients.T
+
+    def mvppLearnRuleSlash(self, models, model_idx_list, grad_device, probs):
+        denominator = probs.sum()
+
+        summed_numerator = torch.zeros([len(self.parameters), self.max_n], dtype=torch.float, device=grad_device)
+
+        # create an tensor for every model
+        splits = torch.split(torch.tensor(np.arange(0, len(models))), 10)
+
+        # iterate over all splits
+        for s in count(start=0, step=1):
+            if s < splits.__len__():
+
+                # Calculate gradients in tensor fashion
+                gradient_mask = []
+                gradient_mask_neg = []
+
+                # iterate over all splits in models
+                for i in count(start=0, step=1):
+                    if i < splits[s].__len__():
+                        pos, neg = self.gen_grad_mask_slash(model_idx_list[splits[s][i]], grad_device)
+                        gradient_mask.append(pos)
+                        gradient_mask_neg.append(neg)
+                    else:
+                        break
+
+                gradient_mask = torch.stack(gradient_mask) * self.selection_mask
+                gradient_mask_neg = torch.stack(gradient_mask_neg) * self.selection_mask
+
+                if gradient_mask.dim() == 2:  # if we only have one model
+                    gradient_mask.unsqueeze(0)
+                    gradient_mask_neg.unsqueeze(0)
+
+                # create the gradient tensor:
+                # generate c=vi
+                c_eq_vi = torch.einsum('kij,ij -> kij', gradient_mask, self.M)
+
+                # compute sum of atoms in c=vi
+                c_eq_vi_sum = torch.einsum('kij -> ki', c_eq_vi)
+                # generate c!=vi from the sum of atoms in c=vi
+                c_not_eq_vi = torch.einsum('kij,ki -> kij', gradient_mask_neg, c_eq_vi_sum)
+
+                # numerator is the sum of both P(I)/c=vi and P(I)/c!=vi (no sign flip necessary due to the correct mask)
+                numerator = c_eq_vi + c_not_eq_vi
+
+                numerator[numerator != 0] = 1 / numerator[numerator != 0]
+                numerator = torch.einsum('kij,k -> kij', numerator, probs[splits[s]])
+                # sum over all potential solutions
+                summed_numerator += torch.einsum('kij -> ij', numerator)
+                # gradient is the fraction of both
+            else:
+                break
+
+        grad_tensor = summed_numerator / denominator
+
+        return grad_tensor
+
+    def gen_grad_mask_slash(self, model_idx_list, grad_device):
+        '''
+        generates a positive gradient mask and a negative gradient mask
+        '''
+
+        gradient_mask = torch.zeros(self.M.shape, dtype=torch.float, device=grad_device)
+        gradient_mask_neg = torch.zeros(self.M.shape, dtype=torch.float, device=grad_device)
+
+        #add a one for every atom that is in the model
+        for i in count(start=0, step=1):
+            if i < model_idx_list.__len__():
+                #ruleIdx, atomIdx = self.ga_map[model[i]]
+                ruleIdx, atomIdx = model_idx_list[i]
+                gradient_mask[ruleIdx][atomIdx] = 1
+
+                if ruleIdx not in self.binary_rule_belongings:
+                    gradient_mask_neg[ruleIdx] = -1
+                    gradient_mask_neg[ruleIdx][atomIdx] = 0
+            else:
+                break
+
+        return gradient_mask, gradient_mask_neg
 
     def mvppLearn(self, models, new_models=None):
         start_time = time.time()
