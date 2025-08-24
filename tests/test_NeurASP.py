@@ -4,6 +4,8 @@ import numpy as np
 import torch
 
 from mvpp import MVPP
+from mvpp_new import MVPP as MVPPNew
+#from mvpp_slash import MVPP as MVPPSlash
 
 class TestNeurASP(unittest.TestCase):
 
@@ -58,12 +60,16 @@ class TestNeurASP(unittest.TestCase):
         slash_probs = []
 
         with (mock.patch.object(MVPP, 'parse', return_value = mock_return),
-              mock.patch.object(MVPP, 'normalize_probs')):
+              mock.patch.object(MVPP, 'normalize_probs'),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
             mvpp = MVPP('')
+            mvpp_new = MVPPNew('')
+            #mvpp_slash = MVPPSlash('')
             for i in range(len(Is)):
                 neurasp_probs.append(mvpp.prob_of_interpretation(Is[i]))
                 slash_probs.append((mvpp.prob_of_interpretation_slash(Is[i], model_idx_list[i])))
-            new_probs = mvpp.prob_of_interpretation_new(Is_new)
+            new_probs = mvpp_new.prob_of_interpretation(Is_new)
 
         np.testing.assert_almost_equal(neurasp_probs, probs)
         np.testing.assert_almost_equal(slash_probs, probs)
