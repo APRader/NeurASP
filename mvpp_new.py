@@ -157,6 +157,18 @@ class MVPP(object):
         clingo_control.solve(on_model=lambda model: models.append(self.model_to_network_preds(model)))
         return np.array(models)
 
+    def find_k_SM_under_obs_new(self, obs, k=3):
+        program = self.pi_prime + obs + "#show card/3."
+        clingo_control = Control(["--warn=none", str(k)])
+        models = []
+        try:
+            clingo_control.add("base", [], program)
+        except:
+            print("\nPi': \n{}".format(program))
+        clingo_control.ground([("base", [])])
+        clingo_control.solve(on_model = lambda model: models.append(self.model_to_network_preds(model)))
+        return np.array(models)
+
 
     # there might be some duplications in SMs when optimization option is used
     # and the duplications are removed by this method

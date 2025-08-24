@@ -10,18 +10,18 @@ from mvpp import MVPP
 
 elapsed_times = {}
 
-def time_method(class_obj, method_name):
+def time_method(class_obj, method_name, elapsed_times_key):
     original = getattr(class_obj, method_name)
 
     # Create entry for this method in elapsed times
-    elapsed_times[method_name] = []
+    elapsed_times[elapsed_times_key] = []
 
     def wrapper(self, *args, **kwargs):
         start_time = time.perf_counter()
         result = original(self, *args, **kwargs)
         end_time = time.perf_counter()
         elapsed_time = end_time - start_time
-        elapsed_times[method_name].append(elapsed_time)
+        elapsed_times[elapsed_times_key].append(elapsed_time)
         return result
 
     return wrapper
@@ -44,10 +44,10 @@ class TestSpeeds(unittest.TestCase):
         NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
 
         # Choose 100 random examples
-        idx_selection = random.sample(range(len(dataList)), 100)
+        idx_selection = random.sample(range(len(dataList)), 1000)
         dataList = [dataList[idx] for idx in idx_selection]
         obsList = [obsList[idx] for idx in idx_selection]
-        with mock.patch.object(MVPP, 'prob_of_interpretation', new=time_method(MVPP, 'prob_of_interpretation')):
+        with mock.patch.object(MVPP, 'prob_of_interpretation', new=time_method(MVPP, 'prob_of_interpretation', 'mvpp_prob_of_interpretation')):
             NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None, bar=True)
 
-        print(f"Time to calculate 100 probs of interpretations: {sum(elapsed_times['prob_of_interpretation'])}" )
+        print(f"Time to calculate 1000 probs of interpretations: {sum(elapsed_times['mvpp_prob_of_interpretation'])}" )

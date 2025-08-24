@@ -773,6 +773,67 @@ class MVPP(object):
 
         return grad_tensor
 
+    # Same as mvppLearn, but with probabilities given, so that gradient calculations can be tested independently
+    def mvppLearnRule(self, models, model_idx_list, grad_device, probs):
+        denominator = probs.sum()
+
+        # if the model is empty return an empty gradient matrix
+        if len(models) == 0 or denominator == 0:
+            return torch.zeros([len(self.parameters), self.max_n], dtype=torch.float, device=grad_device)
+
+        summed_numerator = torch.zeros([len(self.parameters), self.max_n], dtype=torch.float, device=grad_device)
+
+        # create an tensor for every model
+        splits = torch.split(torch.tensor(np.arange(0, len(models))), 10)
+
+        # iterate over all splits
+        for s in count(start=0, step=1):
+            if s < splits.__len__():
+
+                # Calculate gradients in tensor fashion
+                gradient_mask = []
+                gradient_mask_neg = []
+
+                # iterate over all splits in models
+                for i in count(start=0, step=1):
+                    if i < splits[s].__len__():
+                        pos, neg = self.gen_grad_mask(model_idx_list[splits[s][i]], grad_device)
+                        gradient_mask.append(pos)
+                        gradient_mask_neg.append(neg)
+                    else:
+                        break
+
+                gradient_mask = torch.stack(gradient_mask) * self.selection_mask
+                gradient_mask_neg = torch.stack(gradient_mask_neg) * self.selection_mask
+
+                if gradient_mask.dim() == 2:  # if we only have one model
+                    gradient_mask.unsqueeze(0)
+                    gradient_mask_neg.unsqueeze(0)
+
+                # create the gradient tensor:
+                # generate c=vi
+                c_eq_vi = torch.einsum('kij,ij -> kij', gradient_mask, self.M)
+
+                # compute sum of atoms in c=vi
+                c_eq_vi_sum = torch.einsum('kij -> ki', c_eq_vi)
+                # generate c!=vi from the sum of atoms in c=vi
+                c_not_eq_vi = torch.einsum('kij,ki -> kij', gradient_mask_neg, c_eq_vi_sum)
+
+                # numerator is the sum of both P(I)/c=vi and P(I)/c!=vi (no sign flip necessary due to the correct mask)
+                numerator = c_eq_vi + c_not_eq_vi
+
+                numerator[numerator != 0] = 1 / numerator[numerator != 0]
+                numerator = torch.einsum('kij,k -> kij', numerator, probs[splits[s]])
+                # sum over all potential solutions
+                summed_numerator += torch.einsum('kij -> ij', numerator)
+                # gradient is the fraction of both
+            else:
+                break
+
+        grad_tensor = summed_numerator / denominator
+
+        return grad_tensor
+
     # gradients are stored in numpy array instead of list
     # query is a string
     def gradients_one_query(self, query, opt=False, k=0):

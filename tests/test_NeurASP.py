@@ -5,7 +5,7 @@ import torch
 
 from mvpp import MVPP
 from mvpp_new import MVPP as MVPPNew
-#from mvpp_slash import MVPP as MVPPSlash
+from mvpp_slash import MVPP as MVPPSlash
 
 class TestNeurASP(unittest.TestCase):
 
@@ -62,13 +62,15 @@ class TestNeurASP(unittest.TestCase):
         with (mock.patch.object(MVPP, 'parse', return_value = mock_return),
               mock.patch.object(MVPP, 'normalize_probs'),
               mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
-              mock.patch.object(MVPPNew, 'normalize_probs')):
+              mock.patch.object(MVPPNew, 'normalize_probs'),
+              mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],))):
             mvpp = MVPP('')
+            mvpp_slash = MVPPSlash('')
+            mvpp_slash.M = parameters
             mvpp_new = MVPPNew('')
-            #mvpp_slash = MVPPSlash('')
             for i in range(len(Is)):
                 neurasp_probs.append(mvpp.prob_of_interpretation(Is[i]))
-                slash_probs.append((mvpp.prob_of_interpretation_slash(Is[i], model_idx_list[i])))
+                slash_probs.append((mvpp_slash.prob_of_interpretation(Is[i], model_idx_list[i])))
             new_probs = mvpp_new.prob_of_interpretation(Is_new)
 
         np.testing.assert_almost_equal(neurasp_probs, probs)
@@ -152,16 +154,21 @@ class TestNeurASP(unittest.TestCase):
         neurasp_grads = []
 
         with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
-              mock.patch.object(MVPP, 'normalize_probs')):
+              mock.patch.object(MVPP, 'normalize_probs'),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'normalize_probs'),
+              mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],))):
             mvpp = MVPP('')
-            mvpp.max_n = 9
-            mvpp.M = torch.tensor(parameters)
-            mvpp.binary_rule_belongings = {}
-            mvpp.selection_mask = selection_mask
+            mvpp_slash = MVPPSlash('')
+            mvpp_slash.max_n = 9
+            mvpp_slash.M = torch.tensor(parameters)
+            mvpp_slash.binary_rule_belongings = {}
+            mvpp_slash.selection_mask = selection_mask
+            mvpp_new = MVPPNew('')
             for ruleIdx in range(9):
                 neurasp_grads.append(mvpp.mvppLearnRule(ruleIdx, models, probs))
-            slash_grads = mvpp.mvppLearnRuleSlash(models, model_idx_list, 'cpu', torch.tensor(probs))
-            new_grads = mvpp.mvppLearnRuleNew(models_new, np.array(probs), 9)
+            slash_grads = mvpp_slash.mvppLearnRule(models, model_idx_list, 'cpu', torch.tensor(probs))
+            new_grads = mvpp_new.mvppLearnRule(models_new, np.array(probs), 9)
 
         np.testing.assert_almost_equal(neurasp_grads, grads)
         np.testing.assert_almost_equal(slash_grads, grads)
