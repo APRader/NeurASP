@@ -58,26 +58,35 @@ class TestSpeeds(unittest.TestCase):
 
         # Original code
         NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with mock.patch.object(MVPP, 'prob_of_interpretation',
-                               time_method(MVPP, 'prob_of_interpretation', 'prob_of_interpretation')):
+        with (mock.patch.object(MVPP, 'prob_of_interpretation',
+                               time_method(MVPP, 'prob_of_interpretation', 'prob_of_interpretation')),
+              mock.patch.object(MVPP, 'mvppLearnRule',
+                                time_method(MVPP, 'mvppLearnRule', 'mvppLearnRule'))):
             NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None, bar=True)
-
-        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-
-        # New code
-        with (mock.patch('neurasp.MVPP', MVPPNew),
-              mock.patch.object(MVPPNew, 'prob_of_interpretation',
-                                time_method(MVPPNew, 'prob_of_interpretation', 'new_prob_of_interpretation'))):
-            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None, bar=True)
 
         # SLASH code
         dataList_slash = [{k: i.squeeze() for k, i in dataDict.items()} for dataDict in dataList]
         dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)))
         SLASHobj = SLASH(slash_program, nnMapping, optimizers, gpu = False)
-        with mock.patch.object(MVPPSlash, 'prob_of_interpretation',
-                               time_method(MVPPSlash, 'prob_of_interpretation', 'slash_prob_of_interpretation')):
+        with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',
+                               time_method(MVPPSlash, 'prob_of_interpretation', 'slash_prob_of_interpretation')),
+              mock.patch.object(MVPPSlash, 'mvppLearnRule',
+                                time_method(MVPPSlash, 'mvppLearnRule', 'slash_mvppLearnRule'))):
             SLASHobj.learn(dataListLoader, 1)
 
+        # New code
+        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
+        with (mock.patch('neurasp.MVPP', MVPPNew),
+              mock.patch.object(MVPPNew, 'prob_of_interpretation',
+                                time_method(MVPPNew, 'prob_of_interpretation', 'new_prob_of_interpretation')),
+              mock.patch.object(MVPPNew, 'mvppLearnRule',
+                                time_method(MVPPNew, 'mvppLearnRule', 'new_mvppLearnRule'))):
+            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None, bar=True)
+
         print(f"Old prob time: {sum(elapsed_times['prob_of_interpretation'])}")
-        print(f"New prob time: {sum(elapsed_times['new_prob_of_interpretation'])}")
         print(f"SLASH prob time: {sum(elapsed_times['slash_prob_of_interpretation'])}")
+        print(f"New prob time: {sum(elapsed_times['new_prob_of_interpretation'])}")
+        print("==========")
+        print(f"Old grad time: {sum(elapsed_times['mvppLearnRule'])}")
+        print(f"SLASH grad time: {sum(elapsed_times['slash_mvppLearnRule'])}")
+        print(f"New grad time: {sum(elapsed_times['new_mvppLearnRule'])}")

@@ -972,12 +972,12 @@ class SLASH(object):
             writer.add_scalar('train/sm_per_epoch', np.sum(sm_per_batch_list), epoch)
 
 
-        print("avg loss over batches:", np.mean(total_loss))
-        print("1. forward time: ", np.sum(forward_time))
-        print("2. asp time:", np.sum(asp_time))
-        print("3. gradient time:", np.sum(gradient_time))
-        print("4. backward time: ", np.sum(backward_time))
-        print("SM processed", np.sum(sm_per_batch_list))
+        # print("avg loss over batches:", np.mean(total_loss))
+        # print("1. forward time: ", np.sum(forward_time))
+        # print("2. asp time:", np.sum(asp_time))
+        # print("3. gradient time:", np.sum(gradient_time))
+        # print("4. backward time: ", np.sum(backward_time))
+        # print("SM processed", np.sum(sm_per_batch_list))
 
 
 
