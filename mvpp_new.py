@@ -142,11 +142,22 @@ class MVPP(object):
     def model_to_network_preds(self, m):
         m = sorted(str(m).split(' '))
         # Extract network predictions from stable model
-        m = [int(f.split(f'card(0,p{idx + 1},')[1].split(')')[0]) for idx, f in enumerate(m)]
+        m = [int(atom.split(',')[-1].split(')')[0]) for atom in m]
         return m
 
     def find_k_SM_under_obs(self, obs, k=3):
-        program = self.pi_prime + obs + "#show card/3."
+        neural_atoms = set()
+        for pc in self.pc:
+            split_list = pc[0].split('(')
+            atom_name = split_list[0]
+            atom_arity = len(split_list[1].split(','))
+            neural_atom = f"#show {atom_name}/{atom_arity}."
+            # Will not add duplicates, since neural_atoms is a set
+            neural_atoms.add(neural_atom)
+        atom_string = ""
+        for neural_atom in neural_atoms:
+            atom_string += neural_atom
+        program = self.pi_prime + obs + atom_string
         clingo_control = Control(["--warn=none", str(k)])
         models = []
         try:
@@ -156,19 +167,6 @@ class MVPP(object):
         clingo_control.ground([("base", [])])
         clingo_control.solve(on_model=lambda model: models.append(self.model_to_network_preds(model)))
         return np.array(models)
-
-    def find_k_SM_under_obs_new(self, obs, k=3):
-        program = self.pi_prime + obs + "#show card/3."
-        clingo_control = Control(["--warn=none", str(k)])
-        models = []
-        try:
-            clingo_control.add("base", [], program)
-        except:
-            print("\nPi': \n{}".format(program))
-        clingo_control.ground([("base", [])])
-        clingo_control.solve(on_model = lambda model: models.append(self.model_to_network_preds(model)))
-        return np.array(models)
-
 
     # there might be some duplications in SMs when optimization option is used
     # and the duplications are removed by this method
@@ -292,16 +290,11 @@ class MVPP(object):
         return gradients.T
 
     def mvppLearn(self, models):
-        probs = [self.prob_of_interpretation(model) for model in models]
-        gradients = np.array([[0.0 for item in l] for l in self.parameters])
+        probs = self.prob_of_interpretation(models)
         if len(models) != 0:
-            # we compute the gradients w.r.t. the probs in each rule
-            for ruleIdx, list_of_bools in enumerate(self.learnable):
-                gradients[ruleIdx] = self.mvppLearnRule(ruleIdx, models, probs)
-                for atomIdx, b in enumerate(list_of_bools):
-                    if b == False:
-                        gradients[ruleIdx][atomIdx] = 0
-        return gradients
+            return self.mvppLearnRule(models, probs, len(self.pc[0]))
+        else:
+            return [[0.0 for item in l] for l in self.parameters]
 
     # gradients are stored in numpy array instead of list
     # obs is a string

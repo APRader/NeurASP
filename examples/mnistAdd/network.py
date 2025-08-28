@@ -21,7 +21,7 @@ class Net(nn.Module):
             nn.Softmax(1)
         )
 
-    def forward(self, x):
+    def forward(self, x, marg_idx=None, type=1):
         x = self.encoder(x)
         x = x.view(-1, 16 * 4 * 4)
         x = self.classifier(x)
