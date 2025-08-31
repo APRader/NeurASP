@@ -436,7 +436,7 @@ class SLASH(object):
 
 
         #2.4 parse +-Notation and add a const to flag the operation in the npp call
-        pi_prime = pi_prime.replace(' ','').replace('#const','#const ')
+        pi_prime = pi_prime.replace(' ','').replace('#const','#const ').replace('not','not ')
 
         #replace all occurences of the +- calls
         pi_prime, npp_operators = replace_plus_minus_occurences(pi_prime)

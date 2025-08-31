@@ -4,6 +4,8 @@ import torch
 import time
 import random
 
+import numpy as np
+
 from neurasp import NeurASP
 from unittest import mock
 from slash import SLASH
@@ -33,8 +35,78 @@ def time_method(class_obj, method_name, elapsed_times_key):
 
 class TestSpeeds(unittest.TestCase):
 
-    def test_mnist_add(self):
-        """Test speed for MNIST Addition task"""
+    def test_speed_synthetic(self, num_models, num_inputs, num_concepts):
+        models_new = np.random.randint(0, num_concepts, (num_models, num_inputs))
+        models = [[f"test(i{idx},{value})" for idx, value in enumerate(model)] for model in models_new]
+        model_idx_list = [[(idx, value) for idx, value in enumerate(model)] for model in models_new]
+        pc = [[f"test(i{image},{value})" for value in range(num_concepts)] for image in range(num_inputs)]
+        parameters = np.random.random_sample((num_inputs, num_concepts)).tolist()
+        selection_mask = torch.tensor([[True for _ in range(num_concepts)] for _ in range(num_inputs)])
+
+        mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
+
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
+              mock.patch.object(MVPP, 'normalize_probs')):
+            mvpp = MVPP('')
+            start_time = time.perf_counter()
+            probs = [mvpp.prob_of_interpretation(model) for model in models]
+            neurasp_prob_time = time.perf_counter() - start_time
+            [mvpp.mvppLearnRule(ruleIdx, models, probs) for ruleIdx in range(num_inputs)]
+            neurasp_grad_time = time.perf_counter() - neurasp_prob_time - start_time
+
+        with mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],)):
+            mvpp_slash = MVPPSlash('')
+            mvpp_slash.max_n = num_concepts
+            mvpp_slash.M = torch.tensor(parameters)
+            mvpp_slash.binary_rule_belongings = {}
+            mvpp_slash.selection_mask = selection_mask
+
+            start_time = time.perf_counter()
+            probs = []
+            for i in range(len(models)):
+                probs.append(mvpp_slash.prob_of_interpretation(models[i], model_idx_list[i]))
+            slash_prob_time = time.perf_counter() - start_time
+            mvpp_slash.mvppLearnRule(models, model_idx_list, 'cpu', torch.tensor(probs))
+            slash_grad_time = time.perf_counter() - slash_prob_time - start_time
+
+        with (mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
+            mvpp_new = MVPPNew('')
+            start_time = time.perf_counter()
+            probs = mvpp_new.prob_of_interpretation(models_new)
+            newrasp_prob_time = time.perf_counter() - start_time
+            mvpp_new.mvppLearnRule(models_new, np.array(probs), 5)
+            newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
+
+        print("\n")
+        print(f"Old prob time: {neurasp_prob_time}")
+        print(f"SLASH prob time: {slash_prob_time}")
+        print(f"New prob time: {newrasp_prob_time}")
+        print("==========")
+        print(f"Old grad time: {neurasp_grad_time}")
+        print(f"SLASH grad time: {slash_grad_time}")
+        print(f"New grad time: {newrasp_grad_time}")
+
+        assert (newrasp_prob_time + newrasp_grad_time < neurasp_prob_time + neurasp_grad_time)
+        assert (newrasp_prob_time + newrasp_grad_time < slash_prob_time + slash_grad_time)
+
+    def test_speeds_synthetic(self):
+        """Test speeds of different implementations of the probability calculations with synthetic data"""
+
+        # 10 models with 3 inputs and 9 possible concepts
+        self.test_speed_synthetic(10, 3, 9)
+
+        # 100 models with 10 inputs and 15 possible concepts
+        self.test_speed_synthetic(100, 10, 15)
+
+        # 1000 models with 18 inputs and 27 possible concepts
+        self.test_speed_synthetic(1000, 18, 27)
+
+        # 10000 models with 25 inputs and 40 possible concepts
+        self.test_speed_synthetic(10000, 25, 40)
+
+    def test_speeds_mnist_add(self):
+        """Test speeds of different implementations for MNIST Addition task"""
         os.chdir('examples/mnistAdd')
         from examples.mnistAdd.dataGen import dataList, obsList, train_dataset
         from examples.mnistAdd.network import Net
