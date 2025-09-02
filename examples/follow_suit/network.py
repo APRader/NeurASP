@@ -16,7 +16,7 @@ class Net(nn.Module):
         self.dropout = nn.Dropout(0.5)
         self.ReLU = nn.ReLU()
 
-    def forward(self, x):
+    def forward(self, x, marg_idx=None, type=1):
         x = self.pool(self.ReLU(self.conv1(x)))
         x = self.pool(self.ReLU(self.conv2(x)))
         x = self.pool(self.ReLU(self.conv3(x)))
