@@ -1,6 +1,15 @@
 # NeurASP
 This is the implementation of [NeurASP: Embracing Neural Networks into Answer Set Programming](https://www.ijcai.org/proceedings/2020/0243.pdf).  
 [Lab page](https://azreasoners.github.io/ARG-webpage/)
+# Speed tests
+To run the speed tests for the improved functions, make sure your working directory is at the root of this project (i.e. in the NeurASP folder)
+
+test_speeds_synthetic runs speed tests with increasing amounts of synthetic data. No downloads are necessary.
+
+test_speeds_mnist_add downloads the MNIST dataset automatically the first time it is run.
+
+test_speeds_follow_suit requires you to download the playing card data from https://github.com/DanCunnington/FFNSL and put it in the data folder in examples.
+
 # Introduction
 NeurASP is a simple extension of answer set programs by embracing neural networks. By treating the neural network output as the probability distribution over atomic facts in answer set programs, NeurASP provides a simple and effective way to integrate sub-symbolic and symbolic computation. This repository includes examples to show
 1. how NeurASP can make use of pretrained neural networks in symbolic computation and how it can improve the perception accuracy of a neural network by applying symbolic reasoning in answer set programming; and

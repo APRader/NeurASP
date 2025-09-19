@@ -35,7 +35,7 @@ def time_method(class_obj, method_name, elapsed_times_key):
 
 class TestSpeeds(unittest.TestCase):
 
-    def test_speed_synthetic(self, num_models, num_inputs, num_concepts):
+    def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40):
         models_new = np.random.randint(0, num_concepts, (num_models, num_inputs))
         models = [[f"test(i{idx},{value})" for idx, value in enumerate(model)] for model in models_new]
         model_idx_list = [[(idx, value) for idx, value in enumerate(model)] for model in models_new]
@@ -78,7 +78,6 @@ class TestSpeeds(unittest.TestCase):
             mvpp_new.mvppLearnRule(models_new, np.array(probs), 5)
             newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
 
-        print("\n")
         print(f"Old prob time: {neurasp_prob_time}")
         print(f"SLASH prob time: {slash_prob_time}")
         print(f"New prob time: {newrasp_prob_time}")
@@ -86,6 +85,7 @@ class TestSpeeds(unittest.TestCase):
         print(f"Old grad time: {neurasp_grad_time}")
         print(f"SLASH grad time: {slash_grad_time}")
         print(f"New grad time: {newrasp_grad_time}")
+        print("\n")
 
         assert (newrasp_prob_time + newrasp_grad_time < neurasp_prob_time + neurasp_grad_time)
         assert (newrasp_prob_time + newrasp_grad_time < slash_prob_time + slash_grad_time)
@@ -93,16 +93,16 @@ class TestSpeeds(unittest.TestCase):
     def test_speeds_synthetic(self):
         """Test speeds of different implementations of the probability calculations with synthetic data"""
 
-        # 10 models with 3 inputs and 9 possible concepts
-        self.test_speed_synthetic(10, 3, 9)
-
         # 100 models with 10 inputs and 15 possible concepts
+        print("100 models:")
         self.test_speed_synthetic(100, 10, 15)
 
         # 1000 models with 18 inputs and 27 possible concepts
+        print("1,000 models:")
         self.test_speed_synthetic(1000, 18, 27)
 
         # 10000 models with 25 inputs and 40 possible concepts
+        print("10,000 models:")
         self.test_speed_synthetic(10000, 25, 40)
 
     def test_speeds_mnist_add(self):
@@ -207,12 +207,12 @@ class TestSpeeds(unittest.TestCase):
         # SLASH code
         dataList_slash = [{k: i.squeeze() for k, i in dataDict.items()} for dataDict in dataList]
         dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)))
-        slash_neural_preds = ("npp(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P)."
-                        "suit(P,h) :- card(0,+P,-C), C <= 12."
-                        "suit(P,c) :- card(0,+P,-C), C >= 13, C <= 25."
-                        "suit(P,s) :- card(0,+P,-C), C >= 26, C <= 38."
-                        "suit(P,d) :- card(0,+P,-C), C >= 39."
-                        "rank(P,R) :- card(0,+P,-C), rank_value(R,-C\\13+2).")
+        slash_neural_preds = ("\nnpp(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P)."
+                        "\nsuit(P,h) :- card(0,+P,-C), C <= 12."
+                        "\nsuit(P,c) :- card(0,+P,-C), C >= 13, C <= 25."
+                        "\nsuit(P,s) :- card(0,+P,-C), C >= 26, C <= 38."
+                        "\nsuit(P,d) :- card(0,+P,-C), C >= 39."
+                        "\nrank(P,R) :- card(0,+P,-C), rank_value(R,-C\\13+2).")
         slash_program = facts + rules + slash_neural_preds
         SLASHobj = SLASH(slash_program, nnMapping, optimizers, gpu=False)
         with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',

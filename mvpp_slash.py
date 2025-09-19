@@ -166,7 +166,7 @@ class MVPP(object):
                 if len(npp_choices[atom]) == 1:
                     pi_prime += "1{" + "; ".join(npp_choices[atom]) + "}1.\n"
                 else:
-                    pi_prime += "0{" + ";".join(npp_choices[atom]) + "}1.\n"
+                    pi_prime += "1{" + ";".join(npp_choices[atom]) + "}1.\n"
 
         pi_prime += asp
 
