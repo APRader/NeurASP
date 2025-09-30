@@ -16,8 +16,6 @@ class MVPP(object):
         self.k = k
         self.eps = eps
 
-        # each element in self.pc is a list of atoms (one list for one prob choice rule)
-        self.pc = []
         # each element in self.parameters is a list of probabilities
         self.parameters = []
         # each element in self.learnable is a list of Boolean values
@@ -29,18 +27,18 @@ class MVPP(object):
         # self.remain_probs is a list of probs, each denotes a remaining prob given those non-learnable probs
         self.remain_probs = []
 
+        # self.pc: dictionary of concepts
         self.pc, self.parameters, self.learnable, self.asp, self.pi_prime, self.remain_probs = self.parse(program)
         self.normalize_probs()
 
     def parse(self, program):
-        pc = []
+        pc = {}
         parameters = []
         learnable = []
         asp = ""
         pi_prime = ""
         remain_probs = []
 
-        lines = []
         # if program is a file
         if os.path.isfile(program):
             with open(program, 'r') as program:
@@ -68,7 +66,16 @@ class MVPP(object):
                     else:
                         list_of_probs.append(float(prob))
                         list_of_bools.append(False)
-                pc.append(list_of_atoms)
+
+                    # Fill in pc so that each concept entry contains a list of all the values it can take
+                    split_list = atom.split('(')
+                    concept_name = f"{split_list[0]}/{len(split_list[1].split(','))}"
+                    concept_value = atom.split(',')[-1].split(')')[0].strip()
+                    if concept_name not in pc:
+                        pc[concept_name] = [concept_value]
+                    elif concept_value not in pc[concept_name]:
+                        pc[concept_name].append(concept_value)
+
                 parameters.append(list_of_probs)
                 learnable.append(list_of_bools)
                 pi_prime += "1{" + "; ".join(list_of_atoms) + "}1.\n"
@@ -140,24 +147,24 @@ class MVPP(object):
         return models
 
     def model_to_network_preds(self, m):
+        # Sort models so that atoms are in correct order in network_preds
         m = sorted(str(m).split(' '))
         # Extract network predictions from stable model
-        m = [int(atom.split(',')[-1].split(')')[0]) for atom in m]
-        return m
+        network_preds = []
+        for atom in m:
+            split_list = atom.split('(')
+            concept_name = f"{split_list[0]}/{len(split_list[1].split(','))}"
+            concept_value = atom.split(',')[-1].split(')')[0].strip()
+            # Turn concept value into an integer using its index
+            network_preds.append(self.pc[concept_name].index(concept_value))
+        return network_preds
 
     def find_k_SM_under_obs(self, obs, k=3):
-        neural_atoms = set()
+        # Create show statements so clingo only outputs neural concepts
+        show_string = ""
         for pc in self.pc:
-            split_list = pc[0].split('(')
-            atom_name = split_list[0]
-            atom_arity = len(split_list[1].split(','))
-            neural_atom = f"#show {atom_name}/{atom_arity}."
-            # Will not add duplicates, since neural_atoms is a set
-            neural_atoms.add(neural_atom)
-        atom_string = ""
-        for neural_atom in neural_atoms:
-            atom_string += neural_atom
-        program = self.pi_prime + obs + atom_string
+            show_string += f"#show {pc}."
+        program = self.pi_prime + obs + show_string
         clingo_control = Control(["--warn=none", str(k)])
         models = []
         try:
@@ -292,7 +299,7 @@ class MVPP(object):
     def mvppLearn(self, models):
         probs = self.prob_of_interpretation(models)
         if len(models) != 0:
-            return self.mvppLearnRule(models, probs, len(self.pc[0]))
+            return self.mvppLearnRule(models, probs, len(self.learnable[0]))
         else:
             return [[0.0 for item in l] for l in self.parameters]
 

@@ -347,7 +347,7 @@ class NeurASP(object):
                             if check:
                                 continue
                         elif method == 'penalty':
-                            models = dmvpp.find_all_SM_under_obs()
+                            models = dmvpp.find_all_SM_under_obs(obs='')
                             models_noSM = [model for model in models if not self.satisfy(model, self.mvpp['program_asp'] + obsList[dataIdx])]
                             gradients = - dmvpp.mvppLearn(models_noSM)
                         else:

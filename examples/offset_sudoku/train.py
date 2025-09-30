@@ -27,4 +27,4 @@ criterion = torch.nn.BCELoss()
 # =============================================================================
 
 model = Train_Test(model, train_loader, validation_loader, opt, criterion, epochs)
-torch.save(model.state_dict(), 'model_data70.pt')
+torch.save(model.state_dict(), 'data/model_data70.pt')
