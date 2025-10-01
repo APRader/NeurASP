@@ -122,7 +122,7 @@ class TestSpeeds(unittest.TestCase):
 
         m = Net()
         nnMapping = {'digit': m}
-        optimizers = {'digit': torch.optim.Adam(m.parameters(), lr=0.001)}
+        optimizers = {'digit': torch.optim.Adam(m.parameters())}
 
         # Choose 1000 random examples
         idx_selection = random.sample(range(len(dataList)), 1000)
@@ -233,6 +233,59 @@ class TestSpeeds(unittest.TestCase):
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
 
+    def test_add2x2(self):
+        """Test speeds of different implementations for the Add 2x2 task"""
+        os.chdir('../examples/add2x2')
+        from examples.add2x2.dataGen import dataList, obsList
+        from examples.add2x2.network import Net
+
+        dprogram = ("nn(digit(4,i), [0,1,2,3,4,5,6,7,8,9]).\n"
+                    "add2x2(R1,R2,C1,C2) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3), digit(3,i,N4), "
+                    "R1=N1+N2, R2=N3+N4, C1=N1+N3, C2=N2+N4.")
+
+        m = Net()
+        nnMapping = {'digit': m}
+        optimizers = {'digit': torch.optim.Adam(m.parameters())}
+
+        # Choose 1000 random examples
+        idx_selection = random.sample(range(len(dataList)), 1000)
+        dataList = [dataList[idx] for idx in idx_selection]
+        obsList = [obsList[idx] for idx in idx_selection]
+
+        # Original code
+        NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
+        with (mock.patch.object(MVPP, 'prob_of_interpretation',
+                                time_method(MVPP, 'prob_of_interpretation', 'add2x2_prob')),
+              mock.patch.object(MVPP, 'mvppLearnRule',
+                                time_method(MVPP, 'mvppLearnRule', 'add2x2_grad'))):
+            start_time = time.perf_counter()
+            NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None)
+            neurasp_time = time.perf_counter() - start_time
+
+        # New code
+        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
+        with (mock.patch('neurasp.MVPP', MVPPNew),
+              mock.patch.object(MVPPNew, 'prob_of_interpretation',
+                                time_method(MVPPNew, 'prob_of_interpretation', 'new_add2x2_prob')),
+              mock.patch.object(MVPPNew, 'mvppLearnRule',
+                                time_method(MVPPNew, 'mvppLearnRule', 'new_add2x2_grad'))):
+            start_time = time.perf_counter()
+            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
+            newrasp_time = time.perf_counter() - start_time
+
+        print("\n")
+        print(f"Old prob time: {sum(elapsed_times['add2x2_prob'])}")
+        print(f"New prob time: {sum(elapsed_times['new_add2x2_prob'])}")
+        print("==========")
+        print(f"Old grad time: {sum(elapsed_times['add2x2_grad'])}")
+        print(f"New grad time: {sum(elapsed_times['new_add2x2_grad'])}")
+        print("==========")
+        print(f"Total NeurASP time: {neurasp_time}")
+        print(f"Total new time: {newrasp_time}")
+
+        # New code should be faster than existing code
+        assert (newrasp_time < neurasp_time)
+
     def test_speeds_follow_suit(self):
         """Test speeds of different implementations for Follow Suit task.
         WARNING: This test takes hours to complete!"""
@@ -242,7 +295,7 @@ class TestSpeeds(unittest.TestCase):
 
         m = Net()
         nnMapping = {'card': m}
-        optimizers = {'card': torch.optim.Adam(m.parameters(), lr=0.001)}
+        optimizers = {'card': torch.optim.Adam(m.parameters())}
 
         # Choose 1 random example
         idx_selection = random.sample(range(len(dataList)), 1)
@@ -263,7 +316,8 @@ class TestSpeeds(unittest.TestCase):
         dataList_slash = [{k: i.squeeze() for k, i in dataDict.items()} for dataDict in dataList]
         dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)))
         slash_neural_preds = (
-            "\nnpp(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P)."
+            "\nnpp(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,"
+            "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P)."
             "\nsuit(P,h) :- card(0,+P,-C), C <= 12."
             "\nsuit(P,c) :- card(0,+P,-C), C >= 13, C <= 25."
             "\nsuit(P,s) :- card(0,+P,-C), C >= 26, C <= 38."
