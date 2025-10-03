@@ -34,6 +34,68 @@ def time_method(class_obj, method_name, elapsed_times_key):
     return wrapper
 
 
+def sample_examples(dataList, obsList, sample_size):
+    # Sample random subset of examples
+    idx_selection = random.sample(range(len(dataList)), sample_size)
+    dataList = [dataList[idx] for idx in idx_selection]
+    obsList = [obsList[idx] for idx in idx_selection]
+    return dataList, obsList
+
+
+def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name):
+    """Measure the speed of the original NeurASP code for an example."""
+    NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
+    with (mock.patch.object(MVPP, 'prob_of_interpretation',
+                            time_method(MVPP, 'prob_of_interpretation', f'{example_name}_prob')),
+          mock.patch.object(MVPP, 'mvppLearnRule',
+                            time_method(MVPP, 'mvppLearnRule', f'{example_name}_grad'))):
+        start_time = time.perf_counter()
+        NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
+        return time.perf_counter() - start_time
+
+
+def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name):
+    """Measure the speed of the SLASH code for an example."""
+    SLASHobj = SLASH(dprogram, nnMapping, optimizers, gpu=False)
+    with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',
+                            time_method(MVPPSlash, 'prob_of_interpretation', f'slash_{example_name}_prob')),
+          mock.patch.object(MVPPSlash, 'mvppLearnRule',
+                            time_method(MVPPSlash, 'mvppLearnRule', f'slash_{example_name}_grad'))):
+        start_time = time.perf_counter()
+        SLASHobj.learn(dataListLoader, 1)
+        return time.perf_counter() - start_time
+
+
+def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name):
+    """Measure the speed of the new implementation of NeurASP for an example."""
+    NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
+    with (mock.patch('neurasp.MVPP', MVPPNew),
+          mock.patch.object(MVPPNew, 'prob_of_interpretation',
+                            time_method(MVPPNew, 'prob_of_interpretation', f'new_{example_name}_prob')),
+          mock.patch.object(MVPPNew, 'mvppLearnRule',
+                            time_method(MVPPNew, 'mvppLearnRule', f'new_{example_name}_grad'))):
+        start_time = time.perf_counter()
+        NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
+        return time.perf_counter() - start_time
+
+
+def print_times(example_name, neurasp_time, newrasp_time, slash_time=None):
+    print(f"Old prob time: {sum(elapsed_times[f'{example_name}_prob'])}")
+    if slash_time:
+        print(f"SLASH prob time: {sum(elapsed_times[f'slash_{example_name}_prob'])}")
+    print(f"New prob time: {sum(elapsed_times[f'new_{example_name}_prob'])}")
+    print("==========")
+    print(f"Old grad time: {sum(elapsed_times[f'{example_name}_grad'])}")
+    if slash_time:
+        print(f"SLASH grad time: {sum(elapsed_times[f'slash_{example_name}_grad'])}")
+    print(f"New grad time: {sum(elapsed_times[f'new_{example_name}_grad'])}")
+    print("==========")
+    print(f"Total NeurASP time: {neurasp_time}")
+    if slash_time:
+        print(f"Total SLASH time: {slash_time}")
+    print(f"Total new time: {newrasp_time}")
+
+
 class TestSpeeds(unittest.TestCase):
 
     def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40):
@@ -112,6 +174,7 @@ class TestSpeeds(unittest.TestCase):
         from examples.mnistAdd.dataGen import dataList, obsList
         from examples.mnistAdd.network import Net
 
+        example_name = 'mnist_add'
         dprogram = ("img(i1). img(i2).\n"
                     "addition(A,B,N) :- digit(0,A,N1), digit(0,B,N2), N=N1+N2.\n"
                     "nn(digit(1,X), [0,1,2,3,4,5,6,7,8,9]) :- img(X).")
@@ -124,56 +187,21 @@ class TestSpeeds(unittest.TestCase):
         nnMapping = {'digit': m}
         optimizers = {'digit': torch.optim.Adam(m.parameters())}
 
-        # Choose 1000 random examples
-        idx_selection = random.sample(range(len(dataList)), 1000)
-        dataList = [dataList[idx] for idx in idx_selection]
-        obsList = [obsList[idx] for idx in idx_selection]
+        # Sample 1000 examples
+        dataList, obsList = sample_examples(dataList, obsList, 1000)
 
         # Original code
-        NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch.object(MVPP, 'prob_of_interpretation',
-                                time_method(MVPP, 'prob_of_interpretation', 'mnist_add_prob')),
-              mock.patch.object(MVPP, 'mvppLearnRule',
-                                time_method(MVPP, 'mvppLearnRule', 'mnist_add_grad'))):
-            start_time = time.perf_counter()
-            NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            neurasp_time = time.perf_counter() - start_time
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
         # SLASH code
         dataList_slash = [{k: i.squeeze() for k, i in dataDict.items()} for dataDict in dataList]
         dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)))
-        SLASHobj = SLASH(slash_program, nnMapping, optimizers, gpu=False)
-        with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',
-                                time_method(MVPPSlash, 'prob_of_interpretation', 'slash_mnist_add_prob')),
-              mock.patch.object(MVPPSlash, 'mvppLearnRule',
-                                time_method(MVPPSlash, 'mvppLearnRule', 'slash_mnist_add_grad'))):
-            start_time = time.perf_counter()
-            SLASHobj.learn(dataListLoader, 1)
-            slash_time = time.perf_counter() - start_time
+        slash_time = measure_slash_speed(slash_program, nnMapping, optimizers, dataListLoader, example_name)
 
         # New code
-        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch('neurasp.MVPP', MVPPNew),
-              mock.patch.object(MVPPNew, 'prob_of_interpretation',
-                                time_method(MVPPNew, 'prob_of_interpretation', 'new_mnist_add_prob')),
-              mock.patch.object(MVPPNew, 'mvppLearnRule',
-                                time_method(MVPPNew, 'mvppLearnRule', 'new_mnist_add_grad'))):
-            start_time = time.perf_counter()
-            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            newrasp_time = time.perf_counter() - start_time
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
-        print("\n")
-        print(f"Old prob time: {sum(elapsed_times['mnist_add_prob'])}")
-        print(f"SLASH prob time: {sum(elapsed_times['slash_mnist_add_prob'])}")
-        print(f"New prob time: {sum(elapsed_times['new_mnist_add_prob'])}")
-        print("==========")
-        print(f"Old grad time: {sum(elapsed_times['mnist_add_grad'])}")
-        print(f"SLASH grad time: {sum(elapsed_times['slash_mnist_add_grad'])}")
-        print(f"New grad time: {sum(elapsed_times['new_mnist_add_grad'])}")
-        print("==========")
-        print(f"Total NeurASP time: {neurasp_time}")
-        print(f"Total SLASH time: {slash_time}")
-        print(f"Total new time: {newrasp_time}")
+        print_times(example_name, neurasp_time, newrasp_time, slash_time)
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
@@ -185,6 +213,7 @@ class TestSpeeds(unittest.TestCase):
         from examples.top_k.dataGen import dataList, obsList
         from examples.top_k.network import FC
 
+        example_name = 'top_k'
         dprogram = ("nn(in(10, k), [true, false]).\n"
                     "% define maxweight k\n"
                     "#const k = 7.\n"
@@ -195,50 +224,26 @@ class TestSpeeds(unittest.TestCase):
         optimizers = {'in': torch.optim.Adam(m.parameters(), lr=0.001)}
 
         # Choose 1000 random examples
-        idx_selection = random.sample(range(len(dataList)), 1000)
-        dataList = [dataList[idx] for idx in idx_selection]
-        obsList = [obsList[idx] for idx in idx_selection]
+        dataList, obsList = sample_examples(dataList, obsList, 1000)
 
         # Original code
-        NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch.object(MVPP, 'prob_of_interpretation',
-                                time_method(MVPP, 'prob_of_interpretation', 'top_k_prob')),
-              mock.patch.object(MVPP, 'mvppLearnRule',
-                                time_method(MVPP, 'mvppLearnRule', 'top_k_grad'))):
-            start_time = time.perf_counter()
-            NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None)
-            neurasp_time = time.perf_counter() - start_time
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
         # New code
-        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch('neurasp.MVPP', MVPPNew),
-              mock.patch.object(MVPPNew, 'prob_of_interpretation',
-                                time_method(MVPPNew, 'prob_of_interpretation', 'new_top_k_prob')),
-              mock.patch.object(MVPPNew, 'mvppLearnRule',
-                                time_method(MVPPNew, 'mvppLearnRule', 'new_top_k_grad'))):
-            start_time = time.perf_counter()
-            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            newrasp_time = time.perf_counter() - start_time
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
-        print("\n")
-        print(f"Old prob time: {sum(elapsed_times['top_k_prob'])}")
-        print(f"New prob time: {sum(elapsed_times['new_top_k_prob'])}")
-        print("==========")
-        print(f"Old grad time: {sum(elapsed_times['top_k_grad'])}")
-        print(f"New grad time: {sum(elapsed_times['new_top_k_grad'])}")
-        print("==========")
-        print(f"Total NeurASP time: {neurasp_time}")
-        print(f"Total new time: {newrasp_time}")
+        print_times(example_name, neurasp_time, newrasp_time)
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
 
-    def test_add2x2(self):
+    def test_speeds_add2x2(self):
         """Test speeds of different implementations for the Add 2x2 task"""
         os.chdir('../examples/add2x2')
         from examples.add2x2.dataGen import dataList, obsList
         from examples.add2x2.network import Net
 
+        example_name = 'add2x2'
         dprogram = ("nn(digit(4,i), [0,1,2,3,4,5,6,7,8,9]).\n"
                     "add2x2(R1,R2,C1,C2) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3), digit(3,i,N4), "
                     "R1=N1+N2, R2=N3+N4, C1=N1+N3, C2=N2+N4.")
@@ -248,40 +253,45 @@ class TestSpeeds(unittest.TestCase):
         optimizers = {'digit': torch.optim.Adam(m.parameters())}
 
         # Choose 1000 random examples
-        idx_selection = random.sample(range(len(dataList)), 1000)
-        dataList = [dataList[idx] for idx in idx_selection]
-        obsList = [obsList[idx] for idx in idx_selection]
+        dataList, obsList = sample_examples(dataList, obsList, 1000)
 
         # Original code
-        NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch.object(MVPP, 'prob_of_interpretation',
-                                time_method(MVPP, 'prob_of_interpretation', 'add2x2_prob')),
-              mock.patch.object(MVPP, 'mvppLearnRule',
-                                time_method(MVPP, 'mvppLearnRule', 'add2x2_grad'))):
-            start_time = time.perf_counter()
-            NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, smPickle=None)
-            neurasp_time = time.perf_counter() - start_time
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
         # New code
-        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch('neurasp.MVPP', MVPPNew),
-              mock.patch.object(MVPPNew, 'prob_of_interpretation',
-                                time_method(MVPPNew, 'prob_of_interpretation', 'new_add2x2_prob')),
-              mock.patch.object(MVPPNew, 'mvppLearnRule',
-                                time_method(MVPPNew, 'mvppLearnRule', 'new_add2x2_grad'))):
-            start_time = time.perf_counter()
-            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            newrasp_time = time.perf_counter() - start_time
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
-        print("\n")
-        print(f"Old prob time: {sum(elapsed_times['add2x2_prob'])}")
-        print(f"New prob time: {sum(elapsed_times['new_add2x2_prob'])}")
-        print("==========")
-        print(f"Old grad time: {sum(elapsed_times['add2x2_grad'])}")
-        print(f"New grad time: {sum(elapsed_times['new_add2x2_grad'])}")
-        print("==========")
-        print(f"Total NeurASP time: {neurasp_time}")
-        print(f"Total new time: {newrasp_time}")
+        print_times(example_name, neurasp_time, newrasp_time)
+
+        # New code should be faster than existing code
+        assert (newrasp_time < neurasp_time)
+
+    def test_speeds_member3(self):
+        """Test speeds of different implementations for the Member 3 task"""
+        os.chdir('../examples/member3')
+        from examples.member3.dataGen import dataList, obsList
+        from examples.member3.network import Net
+
+        example_name = 'member3'
+        dprogram = ("nn(digit(3,i), [0,1,2,3,4,5,6,7,8,9]).\n"
+                    "member(D,0) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3),\n"
+                    "check(D), D!=N1, D!=N2, D!=N3.\n"
+                    "member(D,1) :- check(D), not member(D,0).")
+
+        m = Net()
+        nnMapping = {'digit': m}
+        optimizers = {'digit': torch.optim.Adam(m.parameters())}
+
+        # Choose 1000 random examples
+        dataList, obsList = sample_examples(dataList, obsList, 1000)
+
+        # Original code
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+
+        # New code
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+
+        print_times(example_name, neurasp_time, newrasp_time)
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
@@ -293,24 +303,17 @@ class TestSpeeds(unittest.TestCase):
         from examples.follow_suit.dataGen import dataList, obsList, facts, rules, dprogram
         from examples.follow_suit.network import Net
 
+        example_name = 'follow_suit'
+
         m = Net()
         nnMapping = {'card': m}
         optimizers = {'card': torch.optim.Adam(m.parameters())}
 
         # Choose 1 random example
-        idx_selection = random.sample(range(len(dataList)), 1)
-        dataList = [dataList[idx] for idx in idx_selection]
-        obsList = [obsList[idx] for idx in idx_selection]
+        dataList, obsList = sample_examples(dataList, obsList, 1)
 
         # Original code
-        NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch.object(MVPP, 'prob_of_interpretation',
-                                time_method(MVPP, 'prob_of_interpretation', 'follow_suit_prob')),
-              mock.patch.object(MVPP, 'mvppLearnRule',
-                                time_method(MVPP, 'mvppLearnRule', 'follow_suit_grad'))):
-            start_time = time.perf_counter()
-            NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            neurasp_time = time.perf_counter() - start_time
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
         # SLASH code
         dataList_slash = [{k: i.squeeze() for k, i in dataDict.items()} for dataDict in dataList]
@@ -324,38 +327,12 @@ class TestSpeeds(unittest.TestCase):
             "\nsuit(P,d) :- card(0,+P,-C), C >= 39."
             "\nrank(P,R) :- card(0,+P,-C), rank_value(R,-C\\13+2).")
         slash_program = facts + rules + slash_neural_preds
-        SLASHobj = SLASH(slash_program, nnMapping, optimizers, gpu=False)
-        with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',
-                                time_method(MVPPSlash, 'prob_of_interpretation', 'slash_follow_suit_prob')),
-              mock.patch.object(MVPPSlash, 'mvppLearnRule',
-                                time_method(MVPPSlash, 'mvppLearnRule', 'slash_follow_suit_grad'))):
-            start_time = time.perf_counter()
-            SLASHobj.learn(dataListLoader, 1)
-            slash_time = time.perf_counter() - start_time
+        slash_time = measure_slash_speed(slash_program, nnMapping, optimizers, dataListLoader, example_name)
 
         # New code
-        NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-        with (mock.patch('neurasp.MVPP', MVPPNew),
-              mock.patch.object(MVPPNew, 'prob_of_interpretation',
-                                time_method(MVPPNew, 'prob_of_interpretation', 'new_follow_suit_prob')),
-              mock.patch.object(MVPPNew, 'mvppLearnRule',
-                                time_method(MVPPNew, 'mvppLearnRule', 'new_follow_suit_grad'))):
-            start_time = time.perf_counter()
-            NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
-            newrasp_time = time.perf_counter() - start_time
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
 
-        print("\n")
-        print(f"Old prob time: {sum(elapsed_times['follow_suit_prob'])}")
-        print(f"SLASH prob time: {sum(elapsed_times['slash_follow_suit_prob'])}")
-        print(f"New prob time: {sum(elapsed_times['new_follow_suit_prob'])}")
-        print("==========")
-        print(f"Old grad time: {sum(elapsed_times['follow_suit_grad'])}")
-        print(f"SLASH grad time: {sum(elapsed_times['slash_follow_suit_grad'])}")
-        print(f"New grad time: {sum(elapsed_times['new_follow_suit_grad'])}")
-        print("==========")
-        print(f"Total NeurASP time: {neurasp_time}")
-        print(f"Total SLASH time: {slash_time}")
-        print(f"Total new time: {newrasp_time}")
+        print_times(example_name, neurasp_time, newrasp_time, slash_time)
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
