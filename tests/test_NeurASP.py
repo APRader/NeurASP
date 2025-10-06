@@ -173,3 +173,43 @@ class TestNeurASP(unittest.TestCase):
         np.testing.assert_almost_equal(neurasp_grads, grads)
         np.testing.assert_almost_equal(slash_grads, grads)
         np.testing.assert_almost_equal(new_grads, grads)
+
+    def test_find_k_SM_under_obs(self):
+        """Test that models are found correctly"""
+
+        # 5 concepts, 5 choices
+        pi_prime = ("1{test(i1,1); test(i1,2); test(i1,3); test(i1,4); test(i1,5)}1.\n"
+                    "1{test(i2,1); test(i2,2); test(i2,3); test(i2,4); test(i2,5)}1.\n"
+                    "1{test(i3,1); test(i3,2); test(i3,3); test(i3,4); test(i3,5)}1.\n"
+                    "1{test(i4,1); test(i4,2); test(i4,3); test(i4,4); test(i4,5)}1.\n"
+                    "1{test(i5,1); test(i5,2); test(i5,3); test(i5,4); test(i5,5)}1.\n"
+                    "result(N) :- test(i1,N1), test(i2,N2), test(i3,N3), test(i4,N4), test(i5,N5), "
+                    "N=(N1+N3)*10+N2+N4-N5.")
+        obs = ":- not result(109)."
+        pc = {'test/2': ['1','2','3','4','5']}
+
+        # There is one stable model that satisfies the observation
+        models = ['result(109)', 'test(i1,5)', 'test(i2,5)', 'test(i3,5)', 'test(i4,5)', 'test(i5,1)']
+        models_new = np.array([[4,4,4,4,0]])
+
+        mock_return = (pc, [], False, "mock_asp", pi_prime, "mock_remain_probs")
+
+        # Test NeurASP
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
+              mock.patch.object(MVPP, 'normalize_probs')):
+            mvpp = MVPP('')
+            neurasp_models = mvpp.find_k_SM_under_obs(obs)
+            assert sorted(neurasp_models[0]) == models
+
+        # Test SLASH
+        with mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],)):
+            mvpp_slash = MVPPSlash('')
+            slash_models = mvpp_slash.find_k_SM_under_query(obs)
+            assert sorted(slash_models[0]) == models
+
+        # Test new implementation
+        with (mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
+            mvpp_new = MVPPNew('')
+            new_models = mvpp_new.find_k_SM_under_obs(obs)
+            assert (new_models == models_new).all()

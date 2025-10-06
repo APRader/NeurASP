@@ -45,7 +45,9 @@ def sample_examples(dataList, obsList, sample_size):
 def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name):
     """Measure the speed of the original NeurASP code for an example."""
     NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
-    with (mock.patch.object(MVPP, 'prob_of_interpretation',
+    with (mock.patch.object(MVPP, 'find_k_SM_under_obs',
+                            time_method(MVPP, 'find_k_SM_under_obs', f'{example_name}_model')),
+          mock.patch.object(MVPP, 'prob_of_interpretation',
                             time_method(MVPP, 'prob_of_interpretation', f'{example_name}_prob')),
           mock.patch.object(MVPP, 'mvppLearnRule',
                             time_method(MVPP, 'mvppLearnRule', f'{example_name}_grad'))):
@@ -57,7 +59,9 @@ def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
 def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name):
     """Measure the speed of the SLASH code for an example."""
     SLASHobj = SLASH(dprogram, nnMapping, optimizers, gpu=False)
-    with (mock.patch.object(MVPPSlash, 'prob_of_interpretation',
+    with (mock.patch.object(MVPPSlash, 'find_k_SM_under_query',
+                            time_method(MVPPSlash, 'find_k_SM_under_query', f'slash_{example_name}_model')),
+          mock.patch.object(MVPPSlash, 'prob_of_interpretation',
                             time_method(MVPPSlash, 'prob_of_interpretation', f'slash_{example_name}_prob')),
           mock.patch.object(MVPPSlash, 'mvppLearnRule',
                             time_method(MVPPSlash, 'mvppLearnRule', f'slash_{example_name}_grad'))):
@@ -70,6 +74,8 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
     """Measure the speed of the new implementation of NeurASP for an example."""
     NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
     with (mock.patch('neurasp.MVPP', MVPPNew),
+          mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
+                            time_method(MVPPNew, 'find_k_SM_under_obs', f'new_{example_name}_model')),
           mock.patch.object(MVPPNew, 'prob_of_interpretation',
                             time_method(MVPPNew, 'prob_of_interpretation', f'new_{example_name}_prob')),
           mock.patch.object(MVPPNew, 'mvppLearnRule',
@@ -80,6 +86,11 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
 
 
 def print_times(example_name, neurasp_time, newrasp_time, slash_time=None):
+    print(f"Old model time: {sum(elapsed_times[f'{example_name}_model'])}")
+    if slash_time:
+        print(f"SLASH model time: {sum(elapsed_times[f'slash_{example_name}_model'])}")
+    print(f"New model time: {sum(elapsed_times[f'new_{example_name}_model'])}")
+    print("==========")
     print(f"Old prob time: {sum(elapsed_times[f'{example_name}_prob'])}")
     if slash_time:
         print(f"SLASH prob time: {sum(elapsed_times[f'slash_{example_name}_prob'])}")
@@ -154,7 +165,7 @@ class TestSpeeds(unittest.TestCase):
         assert (newrasp_prob_time + newrasp_grad_time < slash_prob_time + slash_grad_time)
 
     def test_speeds_synthetic(self):
-        """Test speeds of different implementations of the probability calculations with synthetic data"""
+        """Test speeds of different implementations of probability and gradient calculations with synthetic data"""
 
         # 100 models with 10 inputs and 15 possible concepts
         print("100 models:")
