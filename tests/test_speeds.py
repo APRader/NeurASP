@@ -42,17 +42,19 @@ def sample_examples(dataList, obsList, sample_size):
     return dataList, obsList
 
 
-def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name):
+def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=False):
     """Measure the speed of the original NeurASP code for an example."""
     NeurASPobj = NeurASP(dprogram, nnMapping, optimizers)
     with (mock.patch.object(MVPP, 'find_k_SM_under_obs',
                             time_method(MVPP, 'find_k_SM_under_obs', f'{example_name}_model')),
+          mock.patch.object(MVPP, 'find_all_opt_SM_under_obs_WC',
+                            time_method(MVPP, 'find_all_opt_SM_under_obs_WC', f'{example_name}_model')),
           mock.patch.object(MVPP, 'prob_of_interpretation',
                             time_method(MVPP, 'prob_of_interpretation', f'{example_name}_prob')),
           mock.patch.object(MVPP, 'mvppLearnRule',
                             time_method(MVPP, 'mvppLearnRule', f'{example_name}_grad'))):
         start_time = time.perf_counter()
-        NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
+        NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, opt=opt)
         return time.perf_counter() - start_time
 
 
@@ -70,7 +72,7 @@ def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example
         return time.perf_counter() - start_time
 
 
-def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name):
+def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=False):
     """Measure the speed of the new implementation of NeurASP for an example."""
     NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
     with (mock.patch('neurasp.MVPP', MVPPNew),
@@ -81,7 +83,7 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
           mock.patch.object(MVPPNew, 'mvppLearnRule',
                             time_method(MVPPNew, 'mvppLearnRule', f'new_{example_name}_grad'))):
         start_time = time.perf_counter()
-        NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1)
+        NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, opt=opt)
         return time.perf_counter() - start_time
 
 
@@ -301,6 +303,44 @@ class TestSpeeds(unittest.TestCase):
 
         # New code
         newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+
+        print_times(example_name, neurasp_time, newrasp_time)
+
+        # New code should be faster than existing code
+        assert (newrasp_time < neurasp_time)
+
+    def test_speeds_shortest_path(self):
+        """Test speeds of different implementations for the Shortest Path task"""
+        os.chdir('../examples/shortest_path')
+        from examples.shortest_path.dataGen import dataList, obsList
+        from examples.shortest_path.network import FC
+
+        example_name = 'shortest_path'
+        dprogram = ("nn(sp(24, g), [true, false]).\n"
+                    "sp(X) :- sp(X,g,true).\n"
+                    "sp(0,1) :- sp(0). sp(1,2) :- sp(1). sp(2,3) :- sp(2). sp(4,5) :- sp(3). sp(5,6) :- sp(4).\n"
+                    "sp(6,7) :- sp(5). sp(8,9) :- sp(6). sp(9,10) :- sp(7). sp(10,11) :- sp(8). sp(12,13) :- sp(9).\n" 
+                    "sp(13,14) :- sp(10). sp(14,15) :- sp(11). sp(0,4) :- sp(12). sp(4,8) :- sp(13).\n"
+                    "sp(8,12) :- sp(14). sp(1,5) :- sp(15). sp(5,9) :- sp(16). sp(9,13) :- sp(17). sp(2,6) :- sp(18).\n"
+                    "sp(6,10) :- sp(19). sp(10,14) :- sp(20). sp(3,7) :- sp(21). sp(7,11) :- sp(22).\n" 
+                    "sp(11,15) :- sp(23). sp(X,Y) :- sp(Y,X).\n"
+                    "mistake :- X=0..15, #count{Y: sp(X,Y)} = 1. mistake :- X=0..15, #count{Y: sp(X,Y)} >= 3.\n"
+                    "reachable(X, Y) :- sp(X, Y). reachable(X, Y) :- reachable(X, Z), sp(Z, Y).\n"
+                    "mistake :- sp(X, _), sp(Y, _), not reachable(X, Y).\n"
+                    ":~ sp(X). [1, X]")
+
+        m = FC(40, 50, 50, 50, 50, 50, 24)
+        nnMapping = {'sp': m}
+        optimizers = {'sp': torch.optim.Adam(m.parameters())}
+
+        # Choose 500 random examples
+        dataList, obsList = sample_examples(dataList, obsList, 500)
+
+        # Original code
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=True)
+
+        # New code
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=True)
 
         print_times(example_name, neurasp_time, newrasp_time)
 

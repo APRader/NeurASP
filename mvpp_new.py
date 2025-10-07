@@ -1,11 +1,9 @@
 import itertools
-from itertools import count
 import math
 import os.path
 import re
 import sys
 import time
-import torch
 
 from clingo.control import Control
 import numpy as np
@@ -119,6 +117,13 @@ class MVPP(object):
         probs = np.multiply(one_hot, net_confs).sum(2).prod(1)
         return probs
 
+    def prob_of_interpretation_variant(self, models):
+        net_confs = np.array(self.parameters)
+        num_imgs_indexes = np.array(range(len(net_confs)))
+        prob_function = lambda m: net_confs[num_imgs_indexes, m].prod()
+        probs = np.apply_along_axis(prob_function, 1, models)
+        return probs
+
     # we assume obs is a string containing a valid Clingo program,
     # and each obs is written in constraint form
     def find_one_SM_under_obs(self, obs):
@@ -159,20 +164,29 @@ class MVPP(object):
             network_preds.append(self.pc[concept_name].index(concept_value))
         return network_preds
 
-    def find_k_SM_under_obs(self, obs, k=3):
+    def find_k_SM_under_obs(self, obs, k=3, opt=False):
         # Create show statements so clingo only outputs neural concepts
         show_string = ""
         for pc in self.pc:
             show_string += f"#show {pc}."
         program = self.pi_prime + obs + show_string
-        clingo_control = Control(["--warn=none", str(k)])
+        if opt:
+            clingo_control = Control(["--warn=none", '--opt-mode=optN', str(k)])
+            def model_fun(model):
+                if model.optimality_proven:
+                    models.append(self.model_to_network_preds(model))
+        else:
+            clingo_control = Control(["--warn=none", str(k)])
+            def model_fun(model):
+                models.append(self.model_to_network_preds(model))
+
         models = []
         try:
             clingo_control.add("base", [], program)
         except:
             print("\nPi': \n{}".format(program))
         clingo_control.ground([("base", [])])
-        clingo_control.solve(on_model=lambda model: models.append(self.model_to_network_preds(model)))
+        clingo_control.solve(on_model=model_fun)
         return np.array(models)
 
     # there might be some duplications in SMs when optimization option is used
@@ -310,10 +324,7 @@ class MVPP(object):
         @param obs: a string for observation
         @param opt: a Boolean denoting whether we use optimal stable models instead of stable models
         """
-        if opt:
-            models = self.find_all_opt_SM_under_obs_WC(obs)
-        else:
-            models = self.find_k_SM_under_obs(obs, k=0)
+        models = self.find_k_SM_under_obs(obs, k=0, opt=opt)
 
         return self.mvppLearn(models)
 
