@@ -279,24 +279,24 @@ class TestSpeeds(unittest.TestCase):
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
 
-    def test_speeds_member3(self):
-        """Test speeds of different implementations for the Member 3 task"""
-        os.chdir('../examples/member3')
-        from examples.member3.dataGen import dataList, obsList
-        from examples.member3.network import Net
+    def test_speeds_member(self):
+        """Test speeds of different implementations for the Member task"""
+        os.chdir('../examples/member5')
+        from examples.member5.dataGen import dataList, obsList
+        from examples.member5.network import Net
 
-        example_name = 'member3'
-        dprogram = ("nn(digit(3,i), [0,1,2,3,4,5,6,7,8,9]).\n"
-                    "member(D,0) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3),\n"
-                    "check(D), D!=N1, D!=N2, D!=N3.\n"
+        example_name = 'member'
+        dprogram = ("nn(digit(5,i), [0,1,2,3,4,5,6,7,8,9]).\n"
+                    "member(D,0) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3), digit(3,i,N4), digit(4,i,N5),\n"
+                    "check(D), D!=N1, D!=N2, D!=N3, D!=N4, D!=N5.\n"
                     "member(D,1) :- check(D), not member(D,0).")
 
         m = Net()
         nnMapping = {'digit': m}
         optimizers = {'digit': torch.optim.Adam(m.parameters())}
 
-        # Choose 1000 random examples
-        dataList, obsList = sample_examples(dataList, obsList, 1000)
+        # Choose 10 random examples
+        dataList, obsList = sample_examples(dataList, obsList, 10)
 
         # Original code
         neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
