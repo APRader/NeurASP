@@ -15,6 +15,7 @@ from mvpp_new import MVPP as MVPPNew
 from mvpp_slash import MVPP as MVPPSlash
 
 elapsed_times = {}
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def time_method(class_obj, method_name, elapsed_times_key):
@@ -112,6 +113,7 @@ def print_times(example_name, neurasp_time, newrasp_time, slash_time=None):
 class TestSpeeds(unittest.TestCase):
 
     def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40):
+        print(f"\nSynthetic speed test with {num_models} models, {num_inputs} inputs and {num_concepts} concepts.")
         models_new = np.random.randint(0, num_concepts, (num_models, num_inputs))
         models = [[f"test(i{idx},{value})" for idx, value in enumerate(model)] for model in models_new]
         model_idx_list = [[(idx, value) for idx, value in enumerate(model)] for model in models_new]
@@ -161,7 +163,6 @@ class TestSpeeds(unittest.TestCase):
         print(f"Old grad time: {neurasp_grad_time}")
         print(f"SLASH grad time: {slash_grad_time}")
         print(f"New grad time: {newrasp_grad_time}")
-        print("\n")
 
         assert (newrasp_prob_time + newrasp_grad_time < neurasp_prob_time + neurasp_grad_time)
         assert (newrasp_prob_time + newrasp_grad_time < slash_prob_time + slash_grad_time)
@@ -170,22 +171,21 @@ class TestSpeeds(unittest.TestCase):
         """Test speeds of different implementations of probability and gradient calculations with synthetic data"""
 
         # 100 models with 10 inputs and 15 possible concepts
-        print("100 models:")
         self.test_speed_synthetic(100, 10, 15)
 
         # 1000 models with 18 inputs and 27 possible concepts
-        print("1,000 models:")
         self.test_speed_synthetic(1000, 18, 27)
 
         # 10000 models with 25 inputs and 40 possible concepts
-        print("10,000 models:")
         self.test_speed_synthetic(10000, 25, 40)
 
     def test_speeds_mnist_add(self):
         """Test speeds of different implementations for the MNIST Addition task"""
-        os.chdir('../examples/mnistAdd')
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/mnistAdd'))
         from examples.mnistAdd.dataGen import dataList, obsList
         from examples.mnistAdd.network import Net
+
+        print("\nMNIST Add speed test")
 
         example_name = 'mnist_add'
         dprogram = ("img(i1). img(i2).\n"
@@ -222,9 +222,11 @@ class TestSpeeds(unittest.TestCase):
 
     def test_speeds_top_k(self):
         """Test speeds of different implementations for the Top Knapsack task"""
-        os.chdir('../examples/top_k')
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/top_k'))
         from examples.top_k.dataGen import dataList, obsList
         from examples.top_k.network import FC
+
+        print("\nTop Knapsack speed test")
 
         example_name = 'top_k'
         dprogram = ("nn(in(10, k), [true, false]).\n"
@@ -252,9 +254,11 @@ class TestSpeeds(unittest.TestCase):
 
     def test_speeds_add2x2(self):
         """Test speeds of different implementations for the Add 2x2 task"""
-        os.chdir('../examples/add2x2')
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/add2x2'))
         from examples.add2x2.dataGen import dataList, obsList
         from examples.add2x2.network import Net
+
+        print("\nAdd 2x2 speed test")
 
         example_name = 'add2x2'
         dprogram = ("nn(digit(4,i), [0,1,2,3,4,5,6,7,8,9]).\n"
@@ -281,9 +285,11 @@ class TestSpeeds(unittest.TestCase):
 
     def test_speeds_member(self):
         """Test speeds of different implementations for the Member task"""
-        os.chdir('../examples/member5')
+        os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/../examples/member5')
         from examples.member5.dataGen import dataList, obsList
         from examples.member5.network import Net
+
+        print("\nMember speed test")
 
         example_name = 'member'
         dprogram = ("nn(digit(5,i), [0,1,2,3,4,5,6,7,8,9]).\n"
@@ -311,9 +317,11 @@ class TestSpeeds(unittest.TestCase):
 
     def test_speeds_shortest_path(self):
         """Test speeds of different implementations for the Shortest Path task"""
-        os.chdir('../examples/shortest_path')
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/shortest_path'))
         from examples.shortest_path.dataGen import dataList, obsList
         from examples.shortest_path.network import FC
+
+        print("\nShortest path speed test")
 
         example_name = 'shortest_path'
         dprogram = ("nn(sp(24, g), [true, false]).\n"
