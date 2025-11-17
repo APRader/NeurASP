@@ -199,12 +199,14 @@ class TestNeurASP(unittest.TestCase):
               mock.patch.object(MVPP, 'normalize_probs')):
             mvpp = MVPP('')
             neurasp_models = mvpp.find_k_SM_under_obs(obs)
+            assert len(neurasp_models) == 1
             assert sorted(neurasp_models[0]) == models
 
         # Test SLASH
         with mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],)):
             mvpp_slash = MVPPSlash('')
             slash_models = mvpp_slash.find_k_SM_under_query(obs)
+            assert len(slash_models) == 1
             assert sorted(slash_models[0]) == models
 
         # Test new implementation
@@ -212,4 +214,41 @@ class TestNeurASP(unittest.TestCase):
               mock.patch.object(MVPPNew, 'normalize_probs')):
             mvpp_new = MVPPNew('')
             new_models = mvpp_new.find_k_SM_under_obs(obs)
+            assert (new_models == models_new).all()
+
+    def test_find_all_opt_SM_under_obs_WC(self):
+        """Test that optimal models are found correctly"""
+
+        # 2 concepts, 2 choices
+        pi_prime = ("1{in(i1,true); in(i1,false)}1. 1{in(i2,true); in(i2,false)}1."
+                    ":- #sum{1, I : in(I,true)} > 1.")
+        obs = ":~ in(i1,true). [-3,r1] :~ in(i2,true). [-6,r2]"
+        pc = {'in/2': ['true', 'false']}
+
+        # There is one optimal stable model that minimises the weak constraints
+        models = ['in(i1,false)', 'in(i2,true)']
+        models_new = np.array([[1, 0]])
+
+        mock_return = (pc, [], False, "mock_asp", pi_prime, "mock_remain_probs")
+
+        # Test NeurASP
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
+              mock.patch.object(MVPP, 'normalize_probs')):
+            mvpp = MVPP('')
+            neurasp_models = mvpp.find_all_opt_SM_under_obs_WC(obs)
+            assert len(neurasp_models) == 1
+            assert sorted(neurasp_models[0]) == models
+
+        # Test SLASH
+        with mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],)):
+            mvpp_slash = MVPPSlash('')
+            slash_models = mvpp_slash.find_all_opt_SM_under_query_WC(obs)
+            assert len(slash_models) == 1
+            assert sorted(slash_models[0]) == models
+
+        # Test new implementation
+        with (mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
+            mvpp_new = MVPPNew('')
+            new_models = mvpp_new.find_k_SM_under_obs(obs, opt=True)
             assert (new_models == models_new).all()
