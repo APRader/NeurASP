@@ -7,6 +7,7 @@ import random
 import numpy as np
 
 from neurasp import NeurASP
+from newrasp import NeurASP as NewrASP
 from unittest import mock
 from slash import SLASH
 
@@ -75,9 +76,8 @@ def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example
 
 def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=False):
     """Measure the speed of the new implementation of NeurASP for an example."""
-    NewrASPobj = NeurASP(dprogram, nnMapping, optimizers)
-    with (mock.patch('neurasp.MVPP', MVPPNew),
-          mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
+    NewrASPobj = NewrASP(dprogram, nnMapping, optimizers)
+    with (mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
                             time_method(MVPPNew, 'find_k_SM_under_obs', f'new_{example_name}_model')),
           mock.patch.object(MVPPNew, 'prob_of_interpretation',
                             time_method(MVPPNew, 'prob_of_interpretation', f'new_{example_name}_prob')),
@@ -156,6 +156,7 @@ class TestSpeeds(unittest.TestCase):
             mvpp_new.mvppLearnRule(models_new, np.array(probs), 5)
             newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
 
+        print("\n")
         print(f"Old prob time: {neurasp_prob_time}")
         print(f"SLASH prob time: {slash_prob_time}")
         print(f"New prob time: {newrasp_prob_time}")
@@ -358,9 +359,12 @@ class TestSpeeds(unittest.TestCase):
     def test_speeds_follow_suit(self):
         """Test speeds of different implementations for Follow Suit task.
         WARNING: This test takes hours to complete!"""
-        os.chdir('../examples/follow_suit')
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/follow_suit'))
         from examples.follow_suit.dataGen import dataList, obsList, facts, rules, dprogram
         from examples.follow_suit.network import Net
+
+        print("\nFollow speed test")
+        print("WARNING: This test typically takes hours to complete.")
 
         example_name = 'follow_suit'
 

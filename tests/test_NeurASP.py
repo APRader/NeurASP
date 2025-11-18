@@ -7,6 +7,9 @@ from mvpp import MVPP
 from mvpp_new import MVPP as MVPPNew
 from mvpp_slash import MVPP as MVPPSlash
 
+from neurasp import NeurASP
+from newrasp import NeurASP as NewrASP
+
 class TestNeurASP(unittest.TestCase):
 
     def test_prob_of_interpretation(self):
@@ -252,3 +255,35 @@ class TestNeurASP(unittest.TestCase):
             mvpp_new = MVPPNew('')
             new_models = mvpp_new.find_k_SM_under_obs(obs, opt=True)
             assert (new_models == models_new).all()
+
+    def test_stable_model_caching(self):
+        """Test that stable models are stored correctly"""
+
+        # Create a simple neural network
+        m = torch.nn.Linear(9,8)
+        nnMapping = {'test': m}
+        optimizer = {'test': torch.optim.Adam(m.parameters())}
+
+        # 9 data points, each with 8 choices
+        dataList = [{'i': torch.rand(9)} for i in range(9)]
+        obsList = [':- not obs(8).',':- not obs(4).', ':-not obs(8).', ':- not obs(1).', ':- not obs(3)',
+                   ':- not obs(2)',':- nots obs(2)', ':- nots obs(3).', ':- not obs(6).']
+        mock_return = ('program', 'program_pr', 'program_asp')
+        stable_models = ['8', '4', '8', '1', '3', '2', '2', '3', '6']
+
+        # Test NeurASP
+        with (mock.patch.object(NeurASP, 'parse', return_value=mock_return),
+              mock.patch('neurasp.MVPP') as mock_mvpp):
+            # Return the number n in :- not obs(n) when calling the stable model function
+            mock_mvpp.return_value.find_k_SM_under_obs = lambda obs, k: obs.split('(')[1].split(')')[0]
+            NeurASPobj = NeurASP('dprogram', nnMapping, optimizer)
+            NeurASPobj.learn(dataList, obsList, 2, storeSM=True)
+            assert NeurASPobj.stableModels == stable_models
+
+        # Test new implementation
+        with (mock.patch.object(NewrASP, 'parse', return_value=mock_return),
+              mock.patch('newrasp.MVPP') as mock_mvpp):
+            mock_mvpp.return_value.find_k_SM_under_obs = lambda obs, k, opt: obs.split('(')[1].split(')')[0]
+            NewrASPobj = NewrASP('dprogram', nnMapping, optimizer)
+            NewrASPobj.learn(dataList, obsList, 2, storeSM=True)
+            assert NewrASPobj.stableModels == {obs: sm for obs, sm in zip(obsList, stable_models)}
