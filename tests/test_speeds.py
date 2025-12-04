@@ -114,7 +114,7 @@ class TestSpeeds(unittest.TestCase):
 
     def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40):
         print(f"\nSynthetic speed test with {num_models} models, {num_inputs} inputs and {num_concepts} concepts.")
-        models_new = np.random.randint(0, num_concepts, (num_models, num_inputs))
+        models_new = torch.randint(0, num_concepts, (num_models, num_inputs))
         models = [[f"test(i{idx},{value})" for idx, value in enumerate(model)] for model in models_new]
         model_idx_list = [[(idx, value) for idx, value in enumerate(model)] for model in models_new]
         pc = [[f"test(i{image},{value})" for value in range(num_concepts)] for image in range(num_inputs)]
@@ -122,6 +122,8 @@ class TestSpeeds(unittest.TestCase):
         selection_mask = torch.tensor([[True for _ in range(num_concepts)] for _ in range(num_inputs)])
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
+        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
+                       "mock_remain_probs")
 
         with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
               mock.patch.object(MVPP, 'normalize_probs')):
@@ -147,16 +149,15 @@ class TestSpeeds(unittest.TestCase):
             mvpp_slash.mvppLearnRule(models, model_idx_list, 'cpu', torch.tensor(probs))
             slash_grad_time = time.perf_counter() - slash_prob_time - start_time
 
-        with (mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+        with (mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
               mock.patch.object(MVPPNew, 'normalize_probs')):
             mvpp_new = MVPPNew('')
             start_time = time.perf_counter()
             probs = mvpp_new.prob_of_interpretation(models_new)
             newrasp_prob_time = time.perf_counter() - start_time
-            mvpp_new.mvppLearnRule(models_new, np.array(probs), 5)
+            mvpp_new.mvppLearnRule(models_new, torch.Tensor(probs), 5)
             newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
 
-        print("\n")
         print(f"Old prob time: {neurasp_prob_time}")
         print(f"SLASH prob time: {slash_prob_time}")
         print(f"New prob time: {newrasp_prob_time}")

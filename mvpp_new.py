@@ -4,6 +4,7 @@ import os.path
 import re
 import sys
 import time
+import torch
 
 from clingo.control import Control
 import numpy as np
@@ -67,12 +68,15 @@ class MVPP(object):
 
                     # Fill in pc so that each concept entry contains a list of all the values it can take
                     split_list = atom.split('(')
-                    concept_name = f"{split_list[0]}/{len(split_list[1].split(','))}"
-                    concept_value = atom.split(',')[-1].split(')')[0].strip()
-                    if concept_name not in pc:
-                        pc[concept_name] = [concept_value]
-                    elif concept_value not in pc[concept_name]:
-                        pc[concept_name].append(concept_value)
+                    concept_name = split_list[0]
+                    concept_args = split_list[1].replace(" ", "")
+                    # Create a unique id for each concept
+                    concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[1]}"
+                    concept_value = concept_args.split(',')[-1].split(')')[0].strip()
+                    if concept_id not in pc:
+                        pc[concept_id] = [concept_value]
+                    else:
+                        pc[concept_id].append(concept_value)
 
                 parameters.append(list_of_probs)
                 learnable.append(list_of_bools)
@@ -112,16 +116,9 @@ class MVPP(object):
         return True
 
     def prob_of_interpretation(self, models):
-        net_confs = np.array(self.parameters)
-        one_hot = np.eye(len(net_confs[0]))[models]
-        probs = np.multiply(one_hot, net_confs).sum(2).prod(1)
-        return probs
-
-    def prob_of_interpretation_variant(self, models):
-        net_confs = np.array(self.parameters)
-        num_imgs_indexes = np.array(range(len(net_confs)))
-        prob_function = lambda m: net_confs[num_imgs_indexes, m].prod()
-        probs = np.apply_along_axis(prob_function, 1, models)
+        net_confs = torch.stack(self.parameters)
+        concept_indices = torch.arange(len(net_confs)).repeat(len(models), 1)
+        probs = net_confs[concept_indices, models].prod(1)
         return probs
 
     # we assume obs is a string containing a valid Clingo program,
@@ -152,23 +149,28 @@ class MVPP(object):
         return models
 
     def model_to_network_preds(self, m):
-        # Sort models so that atoms are in correct order in network_preds
-        m = sorted(str(m).split(' '))
         # Extract network predictions from stable model
-        network_preds = []
+        m = str(m).split(' ')
+        network_preds = [0 for _ in m]
         for atom in m:
             split_list = atom.split('(')
-            concept_name = f"{split_list[0]}/{len(split_list[1].split(','))}"
-            concept_value = atom.split(',')[-1].split(')')[0].strip()
-            # Turn concept value into an integer using its index
-            network_preds.append(self.pc[concept_name].index(concept_value))
+            concept_name = split_list[0]
+            concept_args = split_list[1].replace(" ", "")
+            concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[1]}"
+            concept_value = concept_args.split(',')[-1].split(')')[0].strip()
+            # Maintain order of concepts from pc
+            network_preds[list(self.pc).index(concept_id)] = self.pc[concept_id].index(concept_value)
         return network_preds
 
     def find_k_SM_under_obs(self, obs, k=3, opt=False):
         # Create show statements so clingo only outputs neural concepts
-        show_string = ""
+        show_list = []
         for pc in self.pc:
-            show_string += f"#show {pc}."
+            show_item = f"#show {pc.split(':')[0]}."
+            if show_item not in show_list:
+                show_list.append(show_item)
+        show_string = ' '.join(show_list)
+
         program = self.pi_prime + obs + show_string
         if opt:
             clingo_control = Control(["--warn=none", '--opt-mode=optN', str(k)])
@@ -187,7 +189,7 @@ class MVPP(object):
             print("\nPi': \n{}".format(program))
         clingo_control.ground([("base", [])])
         clingo_control.solve(on_model=model_fun)
-        return np.array(models)
+        return torch.IntTensor(models)
 
     # there might be some duplications in SMs when optimization option is used
     # and the duplications are removed by this method
@@ -297,18 +299,20 @@ class MVPP(object):
         return gradient
 
     def mvppLearnRule(self, models, probs, num_out):
-        nn_confs = np.array(self.parameters)
+        net_confs = torch.stack(self.parameters)
         denominator = sum(probs)
         if denominator == 0:
             return [0 for _ in range(num_out)]
-        nums_out = np.arange(num_out)[:, np.newaxis, np.newaxis]
-        num_ims = len(nn_confs)
 
-        weighted_probs = probs[:, np.newaxis] / nn_confs[np.arange(num_ims), models]
-        multiplication_factor = np.where(models == nums_out, 1, -1)
-        gradients = (weighted_probs * multiplication_factor).sum(1) / denominator
+        concept_indices = torch.arange(len(net_confs)).repeat(len(models), 1)
+        concept_probs = net_confs[concept_indices, models]
 
-        return gradients.T
+        weighted_probs = probs.view(len(probs),1) / concept_probs
+        nums_out = torch.arange(num_out)
+        multiplication_factor = (models.unsqueeze(-1) == nums_out).float() * 2 - 1
+        gradients = (weighted_probs.unsqueeze(-1) * multiplication_factor).sum(0) / denominator
+
+        return gradients
 
     def mvppLearn(self, models):
         probs = self.prob_of_interpretation(models)

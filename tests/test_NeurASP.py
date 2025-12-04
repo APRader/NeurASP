@@ -57,6 +57,8 @@ class TestNeurASP(unittest.TestCase):
                      [0.9, 0, 0.2, 0.5]]
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
+        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
+                           "mock_remain_probs")
 
         probs = [0.00003969, 0.00006075, 0, 0, 0.000015876, 0]
         neurasp_probs = []
@@ -64,7 +66,7 @@ class TestNeurASP(unittest.TestCase):
 
         with (mock.patch.object(MVPP, 'parse', return_value = mock_return),
               mock.patch.object(MVPP, 'normalize_probs'),
-              mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
               mock.patch.object(MVPPNew, 'normalize_probs'),
               mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],))):
             mvpp = MVPP('')
@@ -102,9 +104,9 @@ class TestNeurASP(unittest.TestCase):
             ['test(i1,7)', 'test(i2,4)', 'test(i3,3)', 'test(i4,1)', 'test(i5,0)', 'test(i6,2)', 'test(i7,5)',
              'test(i8,7)', 'test(i9,6)']
         ]
-        models_new = [[1, 0, 0, 5, 7, 7, 5, 3, 2], [6, 2, 0, 1, 0, 6, 4, 5, 8], [5, 1, 8, 6, 1, 2, 4, 6, 4],
+        models_new = torch.IntTensor([[1, 0, 0, 5, 7, 7, 5, 3, 2], [6, 2, 0, 1, 0, 6, 4, 5, 8], [5, 1, 8, 6, 1, 2, 4, 6, 4],
                       [8, 8, 3, 0, 7, 0, 3, 1, 3], [2, 4, 7, 1, 3, 3, 5, 1, 2], [3, 3, 5, 3, 8, 8, 3, 0, 2],
-                      [3, 4, 8, 5, 8, 5, 2, 0, 4], [7, 4, 3, 1, 0, 2, 5, 7, 6]]
+                      [3, 4, 8, 5, 8, 5, 2, 0, 4], [7, 4, 3, 1, 0, 2, 5, 7, 6]])
         model_idx_list = [[(0, 1), (1, 0), (2, 0), (3, 5), (4, 7), (5, 7), (6, 5), (7, 3), (8, 2)],
                           [(0, 6), (1, 2), (2, 0), (3, 1), (4, 0), (5, 6), (6, 4), (7, 5), (8, 8)],
                           [(0, 5), (1, 1), (2, 8), (3, 6), (4, 1), (5, 2), (6, 4), (7, 6), (8, 4)],
@@ -147,6 +149,9 @@ class TestNeurASP(unittest.TestCase):
         selection_mask = torch.tensor([[True for _ in range(9)] for _ in range(9)])
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
+        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
+                           "mock_remain_probs")
+
 
         grads = [[-9, -9, -8.5, -3, -9, -9, -8.5, -8, 1], [-10, -10, -9, -4, -7, -10, -10, -10, 0],
                  [-7.25, -8.25, -8.25, 3.75, -8.25, -5.25, -8.25, -7.75, -8.25], [1, -7, -9, -3, -9, -9, -9, -9, -9],
@@ -158,7 +163,7 @@ class TestNeurASP(unittest.TestCase):
 
         with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
               mock.patch.object(MVPP, 'normalize_probs'),
-              mock.patch.object(MVPPNew, 'parse', return_value=mock_return),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
               mock.patch.object(MVPPNew, 'normalize_probs'),
               mock.patch.object(MVPPSlash, 'parse', return_value=mock_return + ([],))):
             mvpp = MVPP('')
@@ -171,7 +176,7 @@ class TestNeurASP(unittest.TestCase):
             for ruleIdx in range(9):
                 neurasp_grads.append(mvpp.mvppLearnRule(ruleIdx, models, probs))
             slash_grads = mvpp_slash.mvppLearnRule(models, model_idx_list, 'cpu', torch.tensor(probs))
-            new_grads = mvpp_new.mvppLearnRule(models_new, np.array(probs), 9)
+            new_grads = mvpp_new.mvppLearnRule(models_new, torch.Tensor(probs), 9)
 
         np.testing.assert_almost_equal(neurasp_grads, grads)
         np.testing.assert_almost_equal(slash_grads, grads)
@@ -181,18 +186,20 @@ class TestNeurASP(unittest.TestCase):
         """Test that models are found correctly"""
 
         # 5 concepts, 5 choices
-        pi_prime = ("1{test(i1,1); test(i1,2); test(i1,3); test(i1,4); test(i1,5)}1.\n"
-                    "1{test(i2,1); test(i2,2); test(i2,3); test(i2,4); test(i2,5)}1.\n"
-                    "1{test(i3,1); test(i3,2); test(i3,3); test(i3,4); test(i3,5)}1.\n"
-                    "1{test(i4,1); test(i4,2); test(i4,3); test(i4,4); test(i4,5)}1.\n"
-                    "1{test(i5,1); test(i5,2); test(i5,3); test(i5,4); test(i5,5)}1.\n"
-                    "result(N) :- test(i1,N1), test(i2,N2), test(i3,N3), test(i4,N4), test(i5,N5), "
+        pi_prime = ("1{test(1,i1,1); test(1,i1,2); test(1,i1,3); test(1,i1,4); test(1,i1,5)}1.\n"
+                    "1{test(1,i2,1); test(1,i2,2); test(1,i2,3); test(1,i2,4); test(1,i2,5)}1.\n"
+                    "1{test(1,i3,1); test(1,i3,2); test(1,i3,3); test(1,i3,4); test(1,i3,5)}1.\n"
+                    "1{test(1,i4,1); test(1,i4,2); test(1,i4,3); test(1,i4,4); test(1,i4,5)}1.\n"
+                    "1{test(1,i5,1); test(1,i5,2); test(1,i5,3); test(1,i5,4); test(1,i5,5)}1.\n"
+                    "result(N) :- test(1,i1,N1), test(1,i2,N2), test(1,i3,N3), test(1,i4,N4), test(1,i5,N5), "
                     "N=(N1+N3)*10+N2+N4-N5.")
         obs = ":- not result(109)."
-        pc = {'test/2': ['1','2','3','4','5']}
+        pc = {'test/3:i1': ['1','2','3','4','5'], 'test/3:i2': ['1','2','3','4','5'],
+              'test/3:i3': ['1','2','3','4','5'], 'test/3:i4': ['1','2','3','4','5'],
+              'test/3:i5': ['1','2','3','4','5']}
 
         # There is one stable model that satisfies the observation
-        models = ['result(109)', 'test(i1,5)', 'test(i2,5)', 'test(i3,5)', 'test(i4,5)', 'test(i5,1)']
+        models = ['result(109)', 'test(1,i1,5)', 'test(1,i2,5)', 'test(1,i3,5)', 'test(1,i4,5)', 'test(1,i5,1)']
         models_new = np.array([[4,4,4,4,0]])
 
         mock_return = (pc, [], False, "mock_asp", pi_prime, "mock_remain_probs")
@@ -223,13 +230,13 @@ class TestNeurASP(unittest.TestCase):
         """Test that optimal models are found correctly"""
 
         # 2 concepts, 2 choices
-        pi_prime = ("1{in(i1,true); in(i1,false)}1. 1{in(i2,true); in(i2,false)}1."
-                    ":- #sum{1, I : in(I,true)} > 1.")
-        obs = ":~ in(i1,true). [-3,r1] :~ in(i2,true). [-6,r2]"
-        pc = {'in/2': ['true', 'false']}
+        pi_prime = ("1{in(1,i1,true); in(1,i1,false)}1. 1{in(1,i2,true); in(1,i2,false)}1."
+                    ":- #sum{1, I : in(1,I,true)} > 1.")
+        obs = ":~ in(1,i1,true). [-3,r1] :~ in(1,i2,true). [-6,r2]"
+        pc = {'in/3:i1': ['true', 'false'], 'in/3:i2': ['true', 'false']}
 
         # There is one optimal stable model that minimises the weak constraints
-        models = ['in(i1,false)', 'in(i2,true)']
+        models = ['in(1,i1,false)', 'in(1,i2,true)']
         models_new = np.array([[1, 0]])
 
         mock_return = (pc, [], False, "mock_asp", pi_prime, "mock_remain_probs")

@@ -15,6 +15,7 @@ class Net(nn.Module):
         self.flatten = nn.Flatten()
         self.dropout = nn.Dropout(0.5)
         self.ReLU = nn.ReLU()
+        self.softmax = nn.Softmax(1)
 
     def forward(self, x, marg_idx=None, type=1):
         x = self.pool(self.ReLU(self.conv1(x)))
@@ -27,4 +28,6 @@ class Net(nn.Module):
 
         x = self.fc1(x)
         x = self.fc2(x)
+        x = self.softmax(x)
         return x
+

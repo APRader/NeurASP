@@ -21,7 +21,13 @@ class NeurASP(object):
         @param optimizers: a dictionary maps nn names to their optimizers
         @param gpu: a Boolean denoting whether the user wants to use GPU for training and testing
         """
-        self.device = torch.device('cuda' if torch.cuda.is_available() and gpu else 'cpu')
+        self.device = torch.device('cpu')
+        if gpu:
+            if torch.cuda.is_available():
+                self.device = torch.device('cuda')
+            elif torch.backends.mps.is_available():
+                self.device = torch.device('mps')
+
 
         self.dprogram = dprogram
         self.const = {}  # the mapping from c to v for rule #const c=v.
@@ -221,7 +227,7 @@ class NeurASP(object):
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
     def learn(self, dataList, obsList, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
-              storeSM=True, smPickle=None, accEpoch=0, batchSize=1, bar=False):
+              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False):
         """
         @param dataList: a list of dictionaries, where each dictionary maps terms to either a tensor/np-array or a tuple (tensor/np-array, {'m': labelTensor})
         @param obsList: a list of strings, where each string is a set of constraints denoting an observation
@@ -232,6 +238,7 @@ class NeurASP(object):
         @param lr: a real number between 0 and 1 denoting the learning rate for the probabilities in probabilistic rules
         @param storeSM: a boolean denoting whether to store stable models rather than recompute them for each example
         @param smPickle: a file name denoting where to import/save stable models
+        @param accStep: an integer denoting the frequency of testing and printing the accuracy
         @param batchSize: a positive interger denoting the batch size, i.e., how many data instances do we use to update the NN parameters for once
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         """
@@ -289,7 +296,7 @@ class NeurASP(object):
                         nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device))
                         nnOutput[m][t] = torch.clamp(nnOutput[m][t], min=10e-8, max=1. - 10e-8)
 
-                        self.nnOutputs[m][t] = nnOutput[m][t].view(-1).tolist()
+                        self.nnOutputs[m][t] = nnOutput[m][t].detach().to('cpu')
                         # initialize the semantic gradients for each output
                         self.nnGradients[m][t] = [0.0 for i in self.nnOutputs[m][t]]
 
@@ -309,19 +316,21 @@ class NeurASP(object):
                 if alpha < 1:
                     # Step 2.1: replace the parameters in the MVPP program with nn outputs
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        dmvpp.parameters[ruleIdx] = [self.nnOutputs[m][t][i * self.n[m] + j] for (m, i, t, j) in
-                                                     self.mvpp['nnProb'][ruleIdx]]
-                        if len(dmvpp.parameters[ruleIdx]) == 1:
-                            dmvpp.parameters[ruleIdx] = [dmvpp.parameters[ruleIdx][0], 1 - dmvpp.parameters[ruleIdx][0]]
+                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                        dmvpp.parameters[ruleIdx] = self.nnOutputs[m][t][i]
+                        if len(dmvpp.parameters[ruleIdx].size()) == 0:
+                            # Prediction is a single number, signifying probability of being true
+                            # We transform it into a vector of 2 numbers: prob of true and prob of false
+                            dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
+                                                                      1 - dmvpp.parameters[ruleIdx]])
 
                     # Step 2.2: replace the parameters for normal prob. rules in the MVPP program with updated probabilities
                     if self.normalProbs:
                         for ruleIdx, probs in enumerate(self.normalProbs):
-                            dmvpp.parameters[self.mvpp['nnPrRuleNum'] + ruleIdx] = probs
+                            dmvpp.parameters[self.mvpp['nnPrRuleNum'] + ruleIdx] = torch.Tensor(probs)
 
                     # Step 2.3: compute the gradients
                     dmvpp.normalize_probs()
-                    check = False
                     if storeSM:
                         try:
                             models = self.stableModels[obsList[dataIdx]]
@@ -349,22 +358,21 @@ class NeurASP(object):
                         else:
                             print('Error: the method \'%s\' should be either \'exact\' or \'sampling\'', method)
 
-                    # Step 2.4: update parameters in neural networks
-                    gradientsNN = gradients[:self.mvpp['nnPrRuleNum']].tolist()
+                    # Update parameters in neural networks
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        for probIdx, (m, i, t, j) in enumerate(self.mvpp['nnProb'][ruleIdx]):
-                            self.nnGradients[m][t][i * self.n[m] + j] = (alpha - 1) * gradientsNN[ruleIdx][probIdx]
-                    # Step 2.5: backpropogate
+                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                        if gradients[ruleIdx].size() == self.nnOutputs[m][t][i].size():
+                            self.nnGradients[m][t][i] = (alpha - 1) * gradients[ruleIdx]
+                        else:
+                            # Neural net output shape does not match gradient shape
+                            # This is the case for binary predictions, so we only take the first entry of each gradient
+                            self.nnGradients[m][t][i] = (alpha - 1) * gradients[ruleIdx][0]
+
+                    # Backpropagate calculated gradients
                     for m in nnOutput:
                         for t in nnOutput[m]:
-                            if self.device.type == 'cuda':
-                                nnOutput[m][t].backward(torch.cuda.FloatTensor(
-                                    np.reshape(np.array(self.nnGradients[m][t]), nnOutput[m][t].shape)),
-                                                        retain_graph=True)
-                            else:
-                                nnOutput[m][t].backward(torch.FloatTensor(
-                                    np.reshape(np.array(self.nnGradients[m][t]), nnOutput[m][t].shape)),
-                                                        retain_graph=True)
+                            # We set retain_graph to true, since we only call step() every batchSize iterations
+                            nnOutput[m][t].backward(torch.stack(self.nnGradients[m][t]).to(self.device), retain_graph=True)
 
                 # Step 3: update the parameters
                 if (dataIdx + 1) % batchSize == 0:
@@ -384,8 +392,8 @@ class NeurASP(object):
                         dmvpp.normalize_probs()
                         self.normalProbs = dmvpp.parameters[self.mvpp['nnPrRuleNum']:]
 
-                # Step 5: show training accuracy
-                if accEpoch != 0 and (dataIdx + 1) % accEpoch == 0:
+                # Calculate and print training accuracy every accStep steps
+                if accStep != 0 and (dataIdx + 1) % accStep == 0:
                     print('Training accuracy at interation {}:'.format(dataIdx + 1))
                     self.testConstraint(dataList, obsList, [self.mvpp['program']])
 
