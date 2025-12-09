@@ -275,6 +275,7 @@ class TestNeurASP(unittest.TestCase):
         dataList = [{'i': torch.rand(9)} for i in range(9)]
         obsList = [':- not obs(8).',':- not obs(4).', ':-not obs(8).', ':- not obs(1).', ':- not obs(3)',
                    ':- not obs(2)',':- nots obs(2)', ':- nots obs(3).', ':- not obs(6).']
+        dataset = list(zip(dataList, obsList))
         mock_return = ('program', 'program_pr', 'program_asp')
         stable_models = ['8', '4', '8', '1', '3', '2', '2', '3', '6']
 
@@ -292,5 +293,5 @@ class TestNeurASP(unittest.TestCase):
               mock.patch('newrasp.MVPP') as mock_mvpp):
             mock_mvpp.return_value.find_k_SM_under_obs = lambda obs, k, opt: obs.split('(')[1].split(')')[0]
             NewrASPobj = NewrASP('dprogram', nnMapping, optimizer)
-            NewrASPobj.learn(dataList, obsList, 2, storeSM=True)
+            NewrASPobj.learn(dataset, 2, storeSM=True)
             assert NewrASPobj.stableModels == {obs: sm for obs, sm in zip(obsList, stable_models)}

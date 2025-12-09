@@ -83,8 +83,9 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
                             time_method(MVPPNew, 'prob_of_interpretation', f'new_{example_name}_prob')),
           mock.patch.object(MVPPNew, 'mvppLearnRule',
                             time_method(MVPPNew, 'mvppLearnRule', f'new_{example_name}_grad'))):
+        dataset = list(zip(dataList, obsList))
         start_time = time.perf_counter()
-        NewrASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, opt=opt)
+        NewrASPobj.learn(dataset, epoch=1, opt=opt)
         return time.perf_counter() - start_time
 
 

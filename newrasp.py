@@ -226,11 +226,12 @@ class NeurASP(object):
         dmvpp = MVPP(facts + mvppRules + mvpp)
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
-    def learn(self, dataList, obsList, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
+    def learn(self, dataset, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
               storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False):
         """
-        @param dataList: a list of dictionaries, where each dictionary maps terms to either a tensor/np-array or a tuple (tensor/np-array, {'m': labelTensor})
-        @param obsList: a list of strings, where each string is a set of constraints denoting an observation
+        @param dataset: a dataset consisting of inputs and observations,
+                        each input is a dict, mapping terms to a tensor,
+                        each observation is a string, denoting a set of constraints
         @param epoch: an integer denoting the number of epochs
         @param alpha: a real number between 0 and 1 denoting the weight of cross entropy loss; (1-alpha) is the weight of semantic loss
         @param lossFunc: a string in {'cross'} or a loss function object in pytorch
@@ -242,7 +243,6 @@ class NeurASP(object):
         @param batchSize: a positive interger denoting the batch size, i.e., how many data instances do we use to update the NN parameters for once
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         """
-        assert len(dataList) == len(obsList), 'Error: the length of dataList does not equal to the length of obsList'
         assert alpha >= 0 and alpha <= 1, 'Error: the value of alpha should be within [0, 1]'
 
         # if the pickle file for stable models is given, we will either read all stable models from it or
@@ -271,8 +271,8 @@ class NeurASP(object):
         # we train for 'epoch' times of epochs
         for epochIdx in range(epoch):
             # for each training instance in the training data
-            iterator = enumerate(tqdm(dataList)) if bar else enumerate(dataList)
-            for dataIdx, data in iterator:
+            iterator = enumerate(tqdm(dataset)) if bar else enumerate(dataset)
+            for dataIdx, (data, obs) in iterator:
                 # data is a dictionary. we need to edit its key if the key contains a defined const c
                 # where c is defined in rule #const c=v.
                 for key in list(data.keys()):
@@ -333,27 +333,27 @@ class NeurASP(object):
                     dmvpp.normalize_probs()
                     if storeSM:
                         try:
-                            models = self.stableModels[obsList[dataIdx]]
+                            models = self.stableModels[obs]
                         except KeyError:
-                            models = dmvpp.find_k_SM_under_obs(obsList[dataIdx], k=0, opt=opt)
-                            self.stableModels[obsList[dataIdx]] = models
+                            models = dmvpp.find_k_SM_under_obs(obs, k=0, opt=opt)
+                            self.stableModels[obs] = models
                         gradients = dmvpp.mvppLearn(models)
                     else:
                         if method == 'exact':
-                            gradients = dmvpp.gradients_one_obs(obsList[dataIdx], opt=opt)
+                            gradients = dmvpp.gradients_one_obs(obs, opt=opt)
                         elif method == 'sampling':
-                            models = dmvpp.sample_obs(obsList[dataIdx], num=10)
+                            models = dmvpp.sample_obs(obs, num=10)
                             gradients = dmvpp.mvppLearn(models)
                         elif method == 'nn_prediction':
                             models = dmvpp.find_one_most_probable_SM_under_obs_noWC()
-                            check = self.satisfy(models[0], self.mvpp['program_asp'] + obsList[dataIdx])
+                            check = self.satisfy(models[0], self.mvpp['program_asp'] + obs)
                             gradients = dmvpp.mvppLearn(models) if check else -dmvpp.mvppLearn(models)
                             if check:
                                 continue
                         elif method == 'penalty':
                             models = dmvpp.find_all_SM_under_obs(obs='')
                             models_noSM = [model for model in models if
-                                           not self.satisfy(model, self.mvpp['program_asp'] + obsList[dataIdx])]
+                                           not self.satisfy(model, self.mvpp['program_asp'] + obs)]
                             gradients = - dmvpp.mvppLearn(models_noSM)
                         else:
                             print('Error: the method \'%s\' should be either \'exact\' or \'sampling\'', method)
@@ -393,9 +393,8 @@ class NeurASP(object):
                         self.normalProbs = dmvpp.parameters[self.mvpp['nnPrRuleNum']:]
 
                 # Calculate and print training accuracy every accStep steps
-                if accStep != 0 and (dataIdx + 1) % accStep == 0:
-                    print('Training accuracy at interation {}:'.format(dataIdx + 1))
                     self.testConstraint(dataList, obsList, [self.mvpp['program']])
+                    # self.testConstraint(dataList, obsList, [self.mvpp['program']])
 
             # Save the stable models in a pickle file
             if savePickle:
