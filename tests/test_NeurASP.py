@@ -295,3 +295,48 @@ class TestNeurASP(unittest.TestCase):
             NewrASPobj = NewrASP('dprogram', nnMapping, optimizer)
             NewrASPobj.learn(dataset, 2, storeSM=True)
             assert NewrASPobj.stableModels == {obs: sm for obs, sm in zip(obsList, stable_models)}
+
+    def test_downstream_accuracy(self):
+        """Test that downstream accuracy is calculated correctly"""
+        # Set seed so that nn output is the same every time
+        # Predictions will be [1,1,1,1,2,1,1,1] and [1,1,1,2,1,0,1,1]
+        torch.manual_seed(8)
+
+        # 2 data points, each with 8 concepts and 3 choices
+        m = torch.nn.Linear(3, 3)
+        dataset = [({'i': torch.rand(8, 3)}, ':- not obs(1).'), ({'i': torch.rand(8, 3)}, ':- not obs(3).')]
+
+        nnMapping = {'test': m}
+        optimizer = {'test': torch.optim.Adam(m.parameters())}
+        mock_return = ('program', 'program_pr', 'program_asp')
+        nn_prob = [[('test', 0, 'i', 0)], [('test', 1, 'i', 0)], [('test', 2, 'i', 0)], [('test', 3, 'i', 0)],
+                   [('test', 4, 'i', 0)], [('test', 5, 'i', 0)], [('test', 6, 'i', 0)], [('test', 7, 'i', 0)]]
+
+        # Only obs(1) has cached stable models
+        # No entry matches the nn prediction
+        stable_models = {':- not obs(1).': torch.IntTensor([[2,2,2,2,2,2,0,2], [2,0,2,1,1,1,1,1],
+                                                            [1,1,1,1,0,0,2,1], [2,0,1,2,1,1,0,0]])}
+
+        # The stable model for obs(3) has to be fetched from the dmvpp
+        # The sixth entry matches the nn prediction
+        found_stable_models = torch.IntTensor([[0,1,1,2,2,2,0,0],[2,2,2,0,1,0,1,2],[0,1,2,0,2,2,2,2],[2,0,0,0,0,2,1,1],
+                               [2,2,0,0,0,0,2,2],[1,1,1,2,1,0,1,1],[0,0,2,0,0,1,2,0],[0,1,1,1,1,2,0,2],
+                               [1,2,1,0,2,0,1,0]])
+        def mvpp_side_effect(obs,k,opt):
+            if obs == ':- not obs(3).':
+                return found_stable_models
+            return None
+
+        with (mock.patch.object(NewrASP, 'parse', return_value=mock_return),
+              mock.patch('newrasp.MVPP') as mock_mvpp):
+            mock_mvpp.parameters = [0,0,0,0,0,0,0,0]
+            mock_mvpp.find_k_SM_under_obs.side_effect = mvpp_side_effect
+            NewrASPobj = NewrASP('dprogram', nnMapping, optimizer)
+            NewrASPobj.nnOutputs = {'test': ['i']}
+            NewrASPobj.stableModels = stable_models
+            NewrASPobj.mvpp['nnPrRuleNum'] = 8
+            NewrASPobj.mvpp['nnProb'] = nn_prob
+            accuracy = NewrASPobj.downstream_accuracy(dataset, mock_mvpp, True, False)
+
+            # Only the second out of the two inputs yields the correct prediction
+            assert accuracy == 0.5
