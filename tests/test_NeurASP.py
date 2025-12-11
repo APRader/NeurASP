@@ -10,6 +10,7 @@ from mvpp_slash import MVPP as MVPPSlash
 from neurasp import NeurASP
 from newrasp import NeurASP as NewrASP
 
+
 class TestNeurASP(unittest.TestCase):
 
     def test_prob_of_interpretation(self):
@@ -53,8 +54,8 @@ class TestNeurASP(unittest.TestCase):
         ]
 
         parameters = [[0.2, 0.1, 0.8, 0.7], [0.9, 0.9, 0.4, 0.3], [0.6, 0.3, 0.1, 0.1], [0.7, 0.1, 0.2, 0.4],
-                     [0.1,  0.7, 0.5, 0.3], [0, 0.5, 0.9, 0.1], [0.5, 0.7, 0, 0.7], [0.6, 0.3, 0.1, 0.7],
-                     [0.9, 0, 0.2, 0.5]]
+                      [0.1, 0.7, 0.5, 0.3], [0, 0.5, 0.9, 0.1], [0.5, 0.7, 0, 0.7], [0.6, 0.3, 0.1, 0.7],
+                      [0.9, 0, 0.2, 0.5]]
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
         mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
@@ -64,7 +65,7 @@ class TestNeurASP(unittest.TestCase):
         neurasp_probs = []
         slash_probs = []
 
-        with (mock.patch.object(MVPP, 'parse', return_value = mock_return),
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
               mock.patch.object(MVPP, 'normalize_probs'),
               mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
               mock.patch.object(MVPPNew, 'normalize_probs'),
@@ -104,9 +105,10 @@ class TestNeurASP(unittest.TestCase):
             ['test(i1,7)', 'test(i2,4)', 'test(i3,3)', 'test(i4,1)', 'test(i5,0)', 'test(i6,2)', 'test(i7,5)',
              'test(i8,7)', 'test(i9,6)']
         ]
-        models_new = torch.IntTensor([[1, 0, 0, 5, 7, 7, 5, 3, 2], [6, 2, 0, 1, 0, 6, 4, 5, 8], [5, 1, 8, 6, 1, 2, 4, 6, 4],
-                      [8, 8, 3, 0, 7, 0, 3, 1, 3], [2, 4, 7, 1, 3, 3, 5, 1, 2], [3, 3, 5, 3, 8, 8, 3, 0, 2],
-                      [3, 4, 8, 5, 8, 5, 2, 0, 4], [7, 4, 3, 1, 0, 2, 5, 7, 6]])
+        models_new = torch.IntTensor(
+            [[1, 0, 0, 5, 7, 7, 5, 3, 2], [6, 2, 0, 1, 0, 6, 4, 5, 8], [5, 1, 8, 6, 1, 2, 4, 6, 4],
+             [8, 8, 3, 0, 7, 0, 3, 1, 3], [2, 4, 7, 1, 3, 3, 5, 1, 2], [3, 3, 5, 3, 8, 8, 3, 0, 2],
+             [3, 4, 8, 5, 8, 5, 2, 0, 4], [7, 4, 3, 1, 0, 2, 5, 7, 6]])
         model_idx_list = [[(0, 1), (1, 0), (2, 0), (3, 5), (4, 7), (5, 7), (6, 5), (7, 3), (8, 2)],
                           [(0, 6), (1, 2), (2, 0), (3, 1), (4, 0), (5, 6), (6, 4), (7, 5), (8, 8)],
                           [(0, 5), (1, 1), (2, 8), (3, 6), (4, 1), (5, 2), (6, 4), (7, 6), (8, 4)],
@@ -141,17 +143,16 @@ class TestNeurASP(unittest.TestCase):
         probs = np.array([0, 0.1, 0, 1, 0.1, 0.6, 0, 0.2])
 
         parameters = [[0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1], [0.1, 0.2, 0.1, 0.1, 0.1, 0.2, 0.2, 0.1, 0.1],
-                    [0.1, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.2, 0.1], [0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.3],
-                    [0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1], [0.1, 0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0.1],
-                    [0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0, 0.1], [0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3],
-                    [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.2]]
+                      [0.1, 0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.2, 0.1], [0.1, 0.2, 0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.3],
+                      [0.2, 0.1, 0.2, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1], [0.1, 0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0.1],
+                      [0.1, 0.1, 0.2, 0.1, 0.2, 0.2, 0.1, 0, 0.1], [0.1, 0.1, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.3],
+                      [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.1, 0.1, 0.2]]
 
         selection_mask = torch.tensor([[True for _ in range(9)] for _ in range(9)])
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
         mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
                            "mock_remain_probs")
-
 
         grads = [[-9, -9, -8.5, -3, -9, -9, -8.5, -8, 1], [-10, -10, -9, -4, -7, -10, -10, -10, 0],
                  [-7.25, -8.25, -8.25, 3.75, -8.25, -5.25, -8.25, -7.75, -8.25], [1, -7, -9, -3, -9, -9, -9, -9, -9],
@@ -194,13 +195,13 @@ class TestNeurASP(unittest.TestCase):
                     "result(N) :- test(1,i1,N1), test(1,i2,N2), test(1,i3,N3), test(1,i4,N4), test(1,i5,N5), "
                     "N=(N1+N3)*10+N2+N4-N5.")
         obs = ":- not result(109)."
-        pc = {'test/3:i1': ['1','2','3','4','5'], 'test/3:i2': ['1','2','3','4','5'],
-              'test/3:i3': ['1','2','3','4','5'], 'test/3:i4': ['1','2','3','4','5'],
-              'test/3:i5': ['1','2','3','4','5']}
+        pc = {'test/3:i1': ['1', '2', '3', '4', '5'], 'test/3:i2': ['1', '2', '3', '4', '5'],
+              'test/3:i3': ['1', '2', '3', '4', '5'], 'test/3:i4': ['1', '2', '3', '4', '5'],
+              'test/3:i5': ['1', '2', '3', '4', '5']}
 
         # There is one stable model that satisfies the observation
         models = ['result(109)', 'test(1,i1,5)', 'test(1,i2,5)', 'test(1,i3,5)', 'test(1,i4,5)', 'test(1,i5,1)']
-        models_new = np.array([[4,4,4,4,0]])
+        models_new = np.array([[4, 4, 4, 4, 0]])
 
         mock_return = (pc, [], False, "mock_asp", pi_prime, "mock_remain_probs")
 
@@ -267,14 +268,14 @@ class TestNeurASP(unittest.TestCase):
         """Test that stable models are stored correctly"""
 
         # Create a simple neural network
-        m = torch.nn.Linear(9,8)
+        m = torch.nn.Linear(9, 8)
         nnMapping = {'test': m}
         optimizer = {'test': torch.optim.Adam(m.parameters())}
 
         # 9 data points, each with 8 choices
         dataList = [{'i': torch.rand(9)} for i in range(9)]
-        obsList = [':- not obs(8).',':- not obs(4).', ':-not obs(8).', ':- not obs(1).', ':- not obs(3)',
-                   ':- not obs(2)',':- nots obs(2)', ':- nots obs(3).', ':- not obs(6).']
+        obsList = [':- not obs(8).', ':- not obs(4).', ':-not obs(8).', ':- not obs(1).', ':- not obs(3)',
+                   ':- not obs(2)', ':- nots obs(2)', ':- nots obs(3).', ':- not obs(6).']
         dataset = list(zip(dataList, obsList))
         mock_return = ('program', 'program_pr', 'program_asp')
         stable_models = ['8', '4', '8', '1', '3', '2', '2', '3', '6']
@@ -314,22 +315,24 @@ class TestNeurASP(unittest.TestCase):
 
         # Only obs(1) has cached stable models
         # No entry matches the nn prediction
-        stable_models = {':- not obs(1).': torch.IntTensor([[2,2,2,2,2,2,0,2], [2,0,2,1,1,1,1,1],
-                                                            [1,1,1,1,0,0,2,1], [2,0,1,2,1,1,0,0]])}
+        stable_models = {':- not obs(1).': torch.IntTensor([[2, 2, 2, 2, 2, 2, 0, 2], [2, 0, 2, 1, 1, 1, 1, 1],
+                                                            [1, 1, 1, 1, 0, 0, 2, 1], [2, 0, 1, 2, 1, 1, 0, 0]])}
 
         # The stable model for obs(3) has to be fetched from the dmvpp
         # The sixth entry matches the nn prediction
-        found_stable_models = torch.IntTensor([[0,1,1,2,2,2,0,0],[2,2,2,0,1,0,1,2],[0,1,2,0,2,2,2,2],[2,0,0,0,0,2,1,1],
-                               [2,2,0,0,0,0,2,2],[1,1,1,2,1,0,1,1],[0,0,2,0,0,1,2,0],[0,1,1,1,1,2,0,2],
-                               [1,2,1,0,2,0,1,0]])
-        def mvpp_side_effect(obs,k,opt):
+        found_stable_models = torch.IntTensor(
+            [[0, 1, 1, 2, 2, 2, 0, 0], [2, 2, 2, 0, 1, 0, 1, 2], [0, 1, 2, 0, 2, 2, 2, 2], [2, 0, 0, 0, 0, 2, 1, 1],
+             [2, 2, 0, 0, 0, 0, 2, 2], [1, 1, 1, 2, 1, 0, 1, 1], [0, 0, 2, 0, 0, 1, 2, 0], [0, 1, 1, 1, 1, 2, 0, 2],
+             [1, 2, 1, 0, 2, 0, 1, 0]])
+
+        def mvpp_side_effect(obs, k, opt):
             if obs == ':- not obs(3).':
                 return found_stable_models
             return None
 
         with (mock.patch.object(NewrASP, 'parse', return_value=mock_return),
               mock.patch('newrasp.MVPP') as mock_mvpp):
-            mock_mvpp.parameters = [0,0,0,0,0,0,0,0]
+            mock_mvpp.parameters = [0, 0, 0, 0, 0, 0, 0, 0]
             mock_mvpp.find_k_SM_under_obs.side_effect = mvpp_side_effect
             NewrASPobj = NewrASP('dprogram', nnMapping, optimizer)
             NewrASPobj.nnOutputs = {'test': ['i']}

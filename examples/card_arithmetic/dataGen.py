@@ -1,15 +1,13 @@
 import os
 import torch
-import argparse
 
 import pandas as pd
 
 from torch.utils.data import Dataset
 from os.path import join
 from torchvision import transforms, io
-from newrasp import NeurASP
 from data.playing_cards.dataset import PlayingCards
-from examples.follow_suit.network import Net
+
 
 path = os.path.abspath(__file__)
 dir_path = os.path.dirname(path)
@@ -25,10 +23,16 @@ class CardArithmetic(Dataset):
             # Store latent labels if they are available
             latent_data = pd.read_csv(latent_labels_file)
 
+            latent_data['img'] = latent_data['img'].str.replace('.jpg', '')
+            latent_data.to_csv('playing_card_labels_train.csv', index=False)
+
             # Create train set out of all the images that are in the downstream dataset
             train_idxs = set(pd.concat([self.data.iloc[:, 0], self.data.iloc[:, 1]]).unique())
             is_in_train_mask = latent_data['img'].isin(train_idxs)
-            latent_train_labels = latent_data[is_in_train_mask].copy().reset_index(drop=True)
+            # latent_train_labels = latent_data[is_in_train_mask].copy().reset_index(drop=True)
+            latent_train_labels = latent_data[is_in_train_mask].copy()
+            latent_train_labels = latent_train_labels.sample(n=min(len(latent_train_labels), 3000))\
+                .reset_index(drop=True)
 
             # The validation set consists of images not in the downstream dataset, and is capped at 1000 entries
             latent_val_labels = latent_data[~is_in_train_mask].copy()
@@ -59,7 +63,7 @@ transform = transforms.Compose([
 
 trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
                               dir_path +'/data/card_arithmetic_2p_image_labels_30k.csv', transform,
-                              dir_path +'/../../data/playing_cards/train/playing_card_labels_train.csv')
+                              dir_path +'/../../data/playing_cards/train/full_labels.csv')
 
 #############################
 # NeurASP program
@@ -122,19 +126,3 @@ rank(P,R) :- card(P,p,C), rank_value(R,C\\13+2).'''
 
 dprogram = facts + rules + neural_preds
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=1)
-    parser.add_argument('--learning_rate', type=float, default=0.01)
-    parser.add_argument('--weight_decay', type=float, default=0)
-    parser.add_argument('--checkpoint_freq', type=int, default=1000)
-    parser.add_argument('--output_dir', type=str, default="train_output")
-    args = parser.parse_args()
-
-    m = Net()
-    nnMapping = {'card': m}
-    optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)}
-
-    NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
-    NeurASPobj.learn(trainDataset, epoch=5, smPickle='card_arithmetic_2p_stable_models.pkl',
-                     accStep=args.checkpoint_freq, batchSize=args.batch_size)

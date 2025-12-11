@@ -38,10 +38,7 @@ class NeurASP(object):
         self.normalProbs = None  # record the probabilities from normal prob rules
         self.nnOutputs = {}
         self.nnGradients = {}
-        if gpu == True:
-            self.nnMapping = {key: nn.DataParallel(nnMapping[key].to(self.device)) for key in nnMapping}
-        else:
-            self.nnMapping = nnMapping
+        self.nnMapping = nnMapping
         self.optimizers = optimizers
         # self.mvpp is a dictionary consisting of 4 keys:
         # 1. 'program': a string denoting an MVPP program where the probabilistic rules generated from NN are followed by other rules;
@@ -228,7 +225,7 @@ class NeurASP(object):
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
     def learn(self, dataset, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
-              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False):
+              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown'):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
@@ -243,6 +240,7 @@ class NeurASP(object):
         @param accStep: an integer denoting the frequency of testing and printing the accuracy
         @param batchSize: a positive interger denoting the batch size, i.e., how many data instances do we use to update the NN parameters for once
         @param bar: a boolean value denoting whether to show a bar to visualize training process
+        @param seed: the seed that was used for random number generators, used when logging results
         """
         assert alpha >= 0 and alpha <= 1, 'Error: the value of alpha should be within [0, 1]'
 
@@ -265,9 +263,10 @@ class NeurASP(object):
         else:
             dmvpp = MVPP(self.mvpp['program'])
 
-        # we train all nerual network models
+        # Put all neural networks on device in train mode
         for m in self.nnMapping:
             self.nnMapping[m].train()
+            self.nnMapping[m].to(self.device)
 
         # we train for 'epoch' times of epochs
         for epochIdx in range(epoch):
@@ -395,7 +394,7 @@ class NeurASP(object):
 
                 # Calculate and print training accuracy every accStep steps
                 if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
-                    results = {'dataset': type(dataset).__name__, 'epoch': epochIdx, 'step': dataIdx + 1,
+                    results = {'dataset': type(dataset).__name__, 'seed': seed, 'epoch': epochIdx, 'step': dataIdx + 1,
                                'batch_size': batchSize}
                     print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
 
@@ -410,12 +409,11 @@ class NeurASP(object):
                             results[f'{m}_nn_train_accuracy'] = accuracy/100
                             print(f"Train accuracy for {m} network: {accuracy:.2f}%")
                         if dataset.latent_val_data:
-                            for m in self.nnMapping:
-                                dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_val_data[m],
-                                                                         batch_size=64, shuffle=False, drop_last=False)
-                                accuracy, singleAccuracy = self.testNN(m, dataloader)
-                                results[f'{m}_nn_val_accuracy'] = accuracy/100
-                                print(f"Val accuracy for {m} network: {accuracy:.2f}%")
+                            dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_val_data[m],
+                                                                     batch_size=64, shuffle=False, drop_last=False)
+                            accuracy, singleAccuracy = self.testNN(m, dataloader)
+                            results[f'{m}_nn_val_accuracy'] = accuracy/100
+                            print(f"Val accuracy for {m} network: {accuracy:.2f}%")
 
                     # Test downstream accuracy
                     downAcc = self.downstream_accuracy(dataset, dmvpp, storeSM, opt)
