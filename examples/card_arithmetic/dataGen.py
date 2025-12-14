@@ -14,32 +14,20 @@ dir_path = os.path.dirname(path)
 
 class CardArithmetic(Dataset):
 
-    def __init__(self, data_dir, labels_file, transform=None, latent_labels_file=None):
+    def __init__(self, data_dir, downstream_labels, transform=None, latent_labels_file=None):
         self.data_dir = data_dir
         self.transform = transform
-        self.data = pd.read_csv(labels_file)
+        self.data = downstream_labels
 
         if latent_labels_file:
             # Store latent labels if they are available
             latent_data = pd.read_csv(latent_labels_file)
 
-            latent_data['img'] = latent_data['img'].str.replace('.jpg', '')
-            latent_data.to_csv('playing_card_labels_train.csv', index=False)
-
-            # Create train set out of all the images that are in the downstream dataset
-            train_idxs = set(pd.concat([self.data.iloc[:, 0], self.data.iloc[:, 1]]).unique())
-            is_in_train_mask = latent_data['img'].isin(train_idxs)
-            # latent_train_labels = latent_data[is_in_train_mask].copy().reset_index(drop=True)
-            latent_train_labels = latent_data[is_in_train_mask].copy()
-            latent_train_labels = latent_train_labels.sample(n=min(len(latent_train_labels), 3000))\
-                .reset_index(drop=True)
-
-            # The validation set consists of images not in the downstream dataset, and is capped at 1000 entries
-            latent_val_labels = latent_data[~is_in_train_mask].copy()
-            latent_val_labels = latent_val_labels.sample(n=min(len(latent_val_labels), 1000)).reset_index(drop=True)
-
-            self.latent_train_data = {'card': PlayingCards(data_dir, labels=latent_train_labels, transform=transform)}
-            self.latent_val_data = {'card': PlayingCards(data_dir, labels=latent_val_labels, transform=transform)}
+            # Include all images that are in the downstream dataset
+            image_idxs = set(pd.concat([self.data.iloc[:, 0], self.data.iloc[:, 1]]).unique())
+            image_rows = latent_data['img'].isin(image_idxs)
+            latent_labels = latent_data[image_rows].reset_index(drop=True)
+            self.latent_data = {'card': PlayingCards(data_dir, labels=latent_labels, transform=transform)}
 
     def __len__(self):
         return len(self.data)
@@ -54,6 +42,15 @@ class CardArithmetic(Dataset):
             imgs.append(img)
         return {'p': torch.stack(imgs)}, f':- not result({l}).'
 
+def split_dataset(data_file):
+    data = pd.read_csv(data_file)
+    val_data = data.sample(1000).reset_index(drop=True)
+    val_idxs = set(pd.concat([val_data.iloc[:, 0], val_data.iloc[:, 1]]).unique())
+    # As images might be in more than one row, we need to find all rows that include a val image
+    val_rows = data.iloc[:, :-1].isin(val_idxs).any(axis=1)
+    train_data = data[~val_rows].sample(10000).reset_index(drop=True)
+    return train_data, val_data
+
 
 transform = transforms.Compose([
             transforms.ToPILImage(),
@@ -61,9 +58,15 @@ transform = transforms.Compose([
             transforms.ToTensor(),
         ])
 
+train_data, val_data = split_dataset(dir_path +'/data/card_arithmetic_2p_image_labels_30k.csv')
+
 trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
-                              dir_path +'/data/card_arithmetic_2p_image_labels_30k.csv', transform,
-                              dir_path +'/../../data/playing_cards/train/full_labels.csv')
+                              train_data, transform,
+                              dir_path +'/../../data/playing_cards/train/playing_card_labels_train.csv')
+
+valDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
+                              val_data, transform,
+                              dir_path +'/../../data/playing_cards/train/playing_card_labels_train.csv')
 
 #############################
 # NeurASP program

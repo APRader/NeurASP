@@ -25,7 +25,7 @@ else:
     random.seed(seed)
 
 # Now that the seed is set, we can import the data
-from dataGen import trainDataset, dprogram
+from dataGen import trainDataset, valDataset, dprogram
 
 m = Net()
 nnMapping = {'card': m}
@@ -33,4 +33,4 @@ optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, we
 
 NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
 NeurASPobj.learn(trainDataset, epoch=5, smPickle='card_arithmetic_2p_stable_models.pkl',
-                 accStep=args.checkpoint_freq, batchSize=args.batch_size, seed=seed)
+                 accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)

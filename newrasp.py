@@ -225,7 +225,7 @@ class NeurASP(object):
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
     def learn(self, dataset, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
-              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown'):
+              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown', valDataset=None):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
@@ -241,6 +241,7 @@ class NeurASP(object):
         @param batchSize: a positive interger denoting the batch size, i.e., how many data instances do we use to update the NN parameters for once
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         @param seed: the seed that was used for random number generators, used when logging results
+        @param valDataset: a dataset with validation labels for testing accuracies
         """
         assert alpha >= 0 and alpha <= 1, 'Error: the value of alpha should be within [0, 1]'
 
@@ -394,22 +395,22 @@ class NeurASP(object):
 
                 # Calculate and print training accuracy every accStep steps
                 if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
-                    results = {'dataset': type(dataset).__name__, 'seed': seed, 'epoch': epochIdx, 'step': dataIdx + 1,
-                               'batch_size': batchSize}
+                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'seed': seed,
+                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batchSize}
                     print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
 
                     for m in self.nnMapping:
                         results[f'{m}_lr'] = self.optimizers[m].param_groups[0]['lr']
                         results[f'{m}_weight_decay'] = self.optimizers[m].param_groups[0]['weight_decay']
                         # Check if latent datasets exist for testing the latent accuracies
-                        if dataset.latent_train_data:
-                            dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_train_data[m],
+                        if dataset.latent_data:
+                            dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_data[m],
                                                                      batch_size=64, shuffle=False, drop_last=False)
                             accuracy, singleAccuracy = self.testNN(m, dataloader)
                             results[f'{m}_nn_train_accuracy'] = accuracy/100
                             print(f"Train accuracy for {m} network: {accuracy:.2f}%")
-                        if dataset.latent_val_data:
-                            dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_val_data[m],
+                        if valDataset and valDataset.latent_data:
+                            dataloader = torch.utils.data.DataLoader(dataset=valDataset.latent_data[m],
                                                                      batch_size=64, shuffle=False, drop_last=False)
                             accuracy, singleAccuracy = self.testNN(m, dataloader)
                             results[f'{m}_nn_val_accuracy'] = accuracy/100
@@ -417,8 +418,13 @@ class NeurASP(object):
 
                     # Test downstream accuracy
                     downAcc = self.downstream_accuracy(dataset, dmvpp, storeSM, opt)
-                    results[f'downstream_accuracy'] = downAcc
+                    results[f'downstream_train_accuracy'] = downAcc
                     print(f"Downstream accuracy: {downAcc*100:.2f}%")
+
+                    if valDataset:
+                        downAcc = self.downstream_accuracy(valDataset, dmvpp, storeSM, opt)
+                        results[f'downstream_val_accuracy'] = downAcc
+                        print(f"Downstream validation accuracy: {downAcc * 100:.2f}%")
 
                     # Write results into JSON lines file
                     with open('results.jsonl', 'a') as f:
@@ -551,47 +557,47 @@ class NeurASP(object):
             self.nnMapping[func].eval()
 
         correct_count = 0
+        with torch.no_grad():
+            for data, obs in dataset:
+                for key in list(data.keys()):
+                    data[self.constReplacement(key)] = data.pop(key)
 
-        for data, obs in dataset:
-            for key in list(data.keys()):
-                data[self.constReplacement(key)] = data.pop(key)
+                nnOutput = {}
+                for m in self.nnOutputs:
+                    nnOutput[m] = {}
+                    for t in self.nnOutputs[m]:
+                        if isinstance(data[t], tuple):
+                            dataTensor = data[t][0]
+                        else:
+                            dataTensor = data[t]
 
-            nnOutput = {}
-            for m in self.nnOutputs:
-                nnOutput[m] = {}
-                for t in self.nnOutputs[m]:
-                    if isinstance(data[t], tuple):
-                        dataTensor = data[t][0]
-                    else:
-                        dataTensor = data[t]
+                        nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
 
-                    nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
+                probs = []
+                try:
+                    models = self.stableModels[obs]
+                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                        if len(nnOutput[m][t][i].size()) == 0:
+                            probs.append(int(nnOutput[m][t][i] < 0.5))
+                        else:
+                            probs.append(nnOutput[m][t][i].argmax())
+                except KeyError:
+                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                        dmvpp.parameters[ruleIdx] = nnOutput[m][t][i]
+                        if len(dmvpp.parameters[ruleIdx].size()) == 0:
+                            dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
+                                                                      1 - dmvpp.parameters[ruleIdx]])
+                            probs.append(int(nnOutput[m][t][i] < 0.5))
+                        else:
+                            probs.append(nnOutput[m][t][i].argmax())
+                    models = dmvpp.find_k_SM_under_obs(obs, k=0, opt=opt)
+                    if storeSM:
+                        self.stableModels[obs] = models
 
-            probs = []
-            try:
-                models = self.stableModels[obs]
-                for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                    m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                    if len(nnOutput[m][t][i].size()) == 0:
-                        probs.append(int(nnOutput[m][t][i] < 0.5))
-                    else:
-                        probs.append(nnOutput[m][t][i].argmax())
-            except KeyError:
-                for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                    m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                    dmvpp.parameters[ruleIdx] = nnOutput[m][t][i]
-                    if len(dmvpp.parameters[ruleIdx].size()) == 0:
-                        dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
-                                                                  1 - dmvpp.parameters[ruleIdx]])
-                        probs.append(int(nnOutput[m][t][i] < 0.5))
-                    else:
-                        probs.append(nnOutput[m][t][i].argmax())
-                models = dmvpp.find_k_SM_under_obs(obs, k=0, opt=opt)
-                if storeSM:
-                    self.stableModels[obs] = models
-
-            if (torch.stack(probs) == models).all(dim=1).any():
-                # The latent concept predictions form a valid model, hence the downstream prediction is correct
-                correct_count += 1
+                if (torch.stack(probs) == models).all(dim=1).any():
+                    # The latent concept predictions form a valid model, hence the downstream prediction is correct
+                    correct_count += 1
 
         return correct_count/len(dataset)
