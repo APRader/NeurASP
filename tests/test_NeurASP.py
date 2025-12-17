@@ -195,9 +195,9 @@ class TestNeurASP(unittest.TestCase):
                     "result(N) :- test(1,i1,N1), test(1,i2,N2), test(1,i3,N3), test(1,i4,N4), test(1,i5,N5), "
                     "N=(N1+N3)*10+N2+N4-N5.")
         obs = ":- not result(109)."
-        pc = {'test/3:i1': ['1', '2', '3', '4', '5'], 'test/3:i2': ['1', '2', '3', '4', '5'],
-              'test/3:i3': ['1', '2', '3', '4', '5'], 'test/3:i4': ['1', '2', '3', '4', '5'],
-              'test/3:i5': ['1', '2', '3', '4', '5']}
+        pc = {'test/3:1,i1': ['1', '2', '3', '4', '5'], 'test/3:1,i2': ['1', '2', '3', '4', '5'],
+              'test/3:1,i3': ['1', '2', '3', '4', '5'], 'test/3:1,i4': ['1', '2', '3', '4', '5'],
+              'test/3:1,i5': ['1', '2', '3', '4', '5']}
 
         # There is one stable model that satisfies the observation
         models = ['result(109)', 'test(1,i1,5)', 'test(1,i2,5)', 'test(1,i3,5)', 'test(1,i4,5)', 'test(1,i5,1)']
@@ -234,7 +234,7 @@ class TestNeurASP(unittest.TestCase):
         pi_prime = ("1{in(1,i1,true); in(1,i1,false)}1. 1{in(1,i2,true); in(1,i2,false)}1."
                     ":- #sum{1, I : in(1,I,true)} > 1.")
         obs = ":~ in(1,i1,true). [-3,r1] :~ in(1,i2,true). [-6,r2]"
-        pc = {'in/3:i1': ['true', 'false'], 'in/3:i2': ['true', 'false']}
+        pc = {'in/3:1,i1': ['true', 'false'], 'in/3:1,i2': ['true', 'false']}
 
         # There is one optimal stable model that minimises the weak constraints
         models = ['in(1,i1,false)', 'in(1,i2,true)']

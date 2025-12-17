@@ -71,7 +71,7 @@ class MVPP(object):
                     concept_name = split_list[0]
                     concept_args = split_list[1].replace(" ", "")
                     # Create a unique id for each concept
-                    concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[1]}"
+                    concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[0]},{concept_args.split(',')[1]}"
                     concept_value = concept_args.split(',')[-1].split(')')[0].strip()
                     if concept_id not in pc:
                         pc[concept_id] = [concept_value]
@@ -156,7 +156,7 @@ class MVPP(object):
             split_list = atom.split('(')
             concept_name = split_list[0]
             concept_args = split_list[1].replace(" ", "")
-            concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[1]}"
+            concept_id = f"{concept_name}/{len(concept_args.split(','))}:{concept_args.split(',')[0]},{concept_args.split(',')[1]}"
             concept_value = concept_args.split(',')[-1].split(')')[0].strip()
             # Maintain order of concepts from pc
             network_preds[list(self.pc).index(concept_id)] = self.pc[concept_id].index(concept_value)
