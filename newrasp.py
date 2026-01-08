@@ -224,26 +224,24 @@ class NeurASP(object):
         dmvpp = MVPP(facts + mvppRules + mvpp)
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
-    def learn(self, dataset, epoch, alpha=0, lossFunc='cross', method='exact', lr=0.01, opt=False,
+    def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False,
               storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown', valDataset=None):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
                         each observation is a string, denoting a set of constraints
         @param epoch: an integer denoting the number of epochs
-        @param alpha: a real number between 0 and 1 denoting the weight of cross entropy loss; (1-alpha) is the weight of semantic loss
-        @param lossFunc: a string in {'cross'} or a loss function object in pytorch
+        @param lossFunc: a string in {'semantic', 'cross'} or a loss function object in pytorch
         @param method: a string in {'exact', 'sampling'} denoting whether the gradients are computed exactly or by sampling
         @param lr: a real number between 0 and 1 denoting the learning rate for the probabilities in probabilistic rules
         @param storeSM: a boolean denoting whether to store stable models rather than recompute them for each example
         @param smPickle: a file name denoting where to import/save stable models
         @param accStep: an integer denoting the frequency of testing and printing the accuracy
-        @param batchSize: a positive interger denoting the batch size, i.e., how many data instances do we use to update the NN parameters for once
+        @param batchSize: a positive integer denoting the batch size, i.e., how many data instances do we use to update the NN parameters
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         @param seed: the seed that was used for random number generators, used when logging results
         @param valDataset: a dataset with validation labels for testing accuracies
         """
-        assert alpha >= 0 and alpha <= 1, 'Error: the value of alpha should be within [0, 1]'
 
         # if the pickle file for stable models is given, we will either read all stable models from it or
         # store all newly generated stable models in that pickle file in case the pickle file cannot be loaded
@@ -281,15 +279,16 @@ class NeurASP(object):
 
                 # Step 1: get the output of each neural network and initialize the gradients
                 nnOutput = {}
+                latentLabels = {}
                 for m in self.nnOutputs:
                     nnOutput[m] = {}
                     for t in self.nnOutputs[m]:
-                        labelTensor = None
                         # if data maps t to tuple (dataTensor, {'m': labelTensor})
                         if isinstance(data[t], tuple):
+                            latentLabels[m] = {}
                             dataTensor = data[t][0]
                             if m in data[t][1]:
-                                labelTensor = data[t][1][m]
+                                latentLabels[m][t] = data[t][1][m]
                         # if data maps t to dataTensor directly
                         else:
                             dataTensor = data[t]
@@ -301,20 +300,7 @@ class NeurASP(object):
                         # initialize the semantic gradients for each output
                         self.nnGradients[m][t] = [0.0 for i in self.nnOutputs[m][t]]
 
-                        # if alpha is greater than 0 and the labelTensor is given in dataList, we compute the nn gradients
-                        if alpha > 0 and labelTensor is not None:
-                            if isinstance(lossFunc, str):
-                                if lossFunc == 'cross':
-                                    criterion = torch.nn.NLLLoss()
-                                    loss = alpha * criterion(torch.log(nnOutput[m][t].view(-1, self.n[m])),
-                                                             labelTensor.long().view(-1))
-                            else:
-                                criterion = lossFunc
-                                loss = alpha * criterion(nnOutput[m][t].view(-1, self.n[m]), labelTensor)
-                            loss.backward(retain_graph=True)
-
-                # Step 2: if alpha is less than 1, we compute the semantic gradients
-                if alpha < 1:
+                if lossFunc == 'semantic':
                     # Step 2.1: replace the parameters in the MVPP program with nn outputs
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
                         m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
@@ -363,17 +349,29 @@ class NeurASP(object):
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
                         m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
                         if gradients[ruleIdx].size() == self.nnOutputs[m][t][i].size():
-                            self.nnGradients[m][t][i] = (alpha - 1) * gradients[ruleIdx]
+                            self.nnGradients[m][t][i] = gradients[ruleIdx]
                         else:
                             # Neural net output shape does not match gradient shape
                             # This is the case for binary predictions, so we only take the first entry of each gradient
-                            self.nnGradients[m][t][i] = (alpha - 1) * gradients[ruleIdx][0]
+                            self.nnGradients[m][t][i] = gradients[ruleIdx][0]
 
                     # Backpropagate calculated gradients
                     for m in nnOutput:
                         for t in nnOutput[m]:
                             # We set retain_graph to true, since we only call step() every batchSize iterations
                             nnOutput[m][t].backward(torch.stack(self.nnGradients[m][t]).to(self.device), retain_graph=True)
+                else:
+                    # We use fully supervised loss with latent labels
+                    for m in latentLabels:
+                        for t in latentLabels[m]:
+                            if isinstance(lossFunc, str):
+                                if lossFunc == 'cross':
+                                    criterion = torch.nn.NLLLoss()
+                                    loss = criterion(torch.log(nnOutput[m][t].view(-1, self.n[m])),
+                                                     latentLabels[m][t].long().view(-1))
+                            else:
+                                loss = lossFunc(nnOutput[m][t].view(-1, self.n[m]), latentLabels[m][t])
+                            loss.backward(retain_graph=True)
 
                 # Step 3: update the parameters
                 if (dataIdx + 1) % batchSize == 0:
@@ -381,8 +379,8 @@ class NeurASP(object):
                         self.optimizers[m].step()
                         self.optimizers[m].zero_grad()
 
-                # Step 4: if alpha is less than 1, we update probabilities in normal prob. rules
-                if alpha < 1:
+                # If using semantic loss, we update probabilities in normal prob. rules
+                if lossFunc == 'semantic':
                     if self.normalProbs:
                         gradientsNormal = gradients[self.mvpp['nnPrRuleNum']:].tolist()
                         for ruleIdx, ruleGradients in enumerate(gradientsNormal):
