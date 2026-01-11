@@ -254,13 +254,8 @@ class NeurASP(object):
             except FileNotFoundError:
                 savePickle = True
 
-        # get the mvpp program by self.mvpp, so far self.mvpp['program'] is a string
-        if method == 'nn_prediction':
-            dmvpp = MVPP(self.mvpp['program_pr'])
-        elif method == 'penalty':
-            dmvpp = MVPP(self.mvpp['program_pr'])
-        else:
-            dmvpp = MVPP(self.mvpp['program'])
+        # Get the mvpp program by self.mvpp, so far self.mvpp['program'] is a string
+        dmvpp = MVPP(self.mvpp['program'])
 
         # Put all neural networks on device in train mode
         for m in self.nnMapping:
@@ -331,17 +326,6 @@ class NeurASP(object):
                         elif method == 'sampling':
                             models = dmvpp.sample_obs(obs, num=10)
                             gradients = dmvpp.mvppLearn(models)
-                        elif method == 'nn_prediction':
-                            models = dmvpp.find_one_most_probable_SM_under_obs_noWC()
-                            check = self.satisfy(models[0], self.mvpp['program_asp'] + obs)
-                            gradients = dmvpp.mvppLearn(models) if check else -dmvpp.mvppLearn(models)
-                            if check:
-                                continue
-                        elif method == 'penalty':
-                            models = dmvpp.find_all_SM_under_obs(obs='')
-                            models_noSM = [model for model in models if
-                                           not self.satisfy(model, self.mvpp['program_asp'] + obs)]
-                            gradients = - dmvpp.mvppLearn(models_noSM)
                         else:
                             print('Error: the method \'%s\' should be either \'exact\' or \'sampling\'', method)
 

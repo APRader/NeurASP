@@ -142,12 +142,6 @@ class MVPP(object):
         models = [[str(atom) for atom in model] for model in models]
         return models
 
-    def model_to_network_preds(self, m):
-        m = sorted(str(m).split(' '))
-        # Extract network predictions from stable model
-        m = [int(f.split(f'card(0,p{idx + 1},')[1].split(')')[0]) for idx, f in enumerate(m)]
-        return m
-
     # k = 0 means to find all stable models
     def find_k_SM_under_obs(self, obs, k=3):
         program = self.pi_prime + obs
