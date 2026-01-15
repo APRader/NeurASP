@@ -7,9 +7,10 @@ from examples.follow_suit.network import Net
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=1)
-parser.add_argument('--learning_rate', type=float, default=0.01)
+parser.add_argument('--learning_rate', '--lr', type=float, default=0.01)
 parser.add_argument('--weight_decay', type=float, default=0)
 parser.add_argument('--checkpoint_freq', type=int, default=1000)
+parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--output_dir', type=str, default="train_output")
 parser.add_argument('--seed', type=int)
 args = parser.parse_args()
@@ -32,5 +33,5 @@ nnMapping = {'card': m}
 optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)}
 
 NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
-NeurASPobj.learn(trainDataset, epoch=5, smPickle='card_arithmetic_2p_stable_models.pkl',
+NeurASPobj.learn(trainDataset, epoch=args.epochs, smPickle='card_arithmetic_2p_stable_models.pkl', lossFunc='semantic',
                  accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)

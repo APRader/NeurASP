@@ -2,15 +2,16 @@ import os
 import torch
 
 import pandas as pd
+import numpy as np
 
 from torch.utils.data import Dataset
 from os.path import join
 from torchvision import transforms, io
 from data.playing_cards.dataset import PlayingCards
 
-
 path = os.path.abspath(__file__)
 dir_path = os.path.dirname(path)
+
 
 class CardArithmetic(Dataset):
 
@@ -22,25 +23,46 @@ class CardArithmetic(Dataset):
         if latent_labels_file:
             # Store latent labels if they are available
             latent_data = pd.read_csv(latent_labels_file)
+            suits = np.array(['h', 'c', 's', 'd'])
+            ranks = np.array(['2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k', 'a'])
 
-            # Include all images that are in the downstream dataset
-            image_idxs = set(pd.concat([self.data.iloc[:, 0], self.data.iloc[:, 1]]).unique())
-            image_rows = latent_data['img'].isin(image_idxs)
-            latent_labels = latent_data[image_rows].reset_index(drop=True)
-            self.latent_data = {'card': PlayingCards(data_dir, labels=latent_labels, transform=transform)}
+            # Create an index to map semantic labels to numerical labels
+            semantic_to_num = {}
+            for s_idx, s in enumerate(suits):
+                for r_idx, r in enumerate(ranks):
+                    card_string = f"{r}{s}"
+                    semantic_to_num[card_string] = r_idx + (s_idx * len(ranks))
+
+            # Merge latent labels to downstream labels
+            for i, player in enumerate(downstream_labels.columns[:-1], 1):
+                self.data = pd.merge(self.data, latent_data, how='left', left_on=player, right_on='img')
+                # Map semantic labels to numerical labels
+                latent_col_name = f'latent_{i}'
+                self.data[latent_col_name] = self.data['label'].map(semantic_to_num)
+                # Drop redundant columns
+                self.data = self.data.drop(columns=['img', 'label'])
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, index):
         imgs = []
+        latent_labels = []
         img_idxs = self.data.iloc[index]
-        l = img_idxs.iloc[-1]
-        for img_idx in img_idxs[:-1]:
-            img_path = join(self.data_dir, f"{img_idx}.jpg")
-            img = self.transform(io.read_image(img_path))
-            imgs.append(img)
-        return {'p': torch.stack(imgs)}, f':- not result({l}).'
+        for name, value in img_idxs.items():
+            if name.startswith('player'):
+                img_path = join(self.data_dir, f"{value}.jpg")
+                img = self.transform(io.read_image(img_path))
+                imgs.append(img)
+            if name.startswith('latent'):
+                latent_labels.append(value)
+            if name == 'result':
+                label = value
+        if not latent_labels:
+            return {'p': torch.stack(imgs)}, f':- not result({label}).'
+        else:
+            return {'p': (torch.stack(imgs), {'card': torch.Tensor(latent_labels)})}, f':- not result({label}).'
+
 
 def split_dataset(data_file):
     data = pd.read_csv(data_file)
@@ -58,15 +80,15 @@ transform = transforms.Compose([
             transforms.ToTensor(),
         ])
 
-train_data, val_data = split_dataset(dir_path +'/data/card_arithmetic_2p_image_labels_30k.csv')
+train_data, val_data = split_dataset(dir_path + '/data/card_arithmetic_2p_image_labels_30k.csv')
 
 trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
                               train_data, transform,
-                              dir_path +'/../../data/playing_cards/train/playing_card_labels_train.csv')
+                              dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
 
 valDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
-                              val_data, transform,
-                              dir_path +'/../../data/playing_cards/train/playing_card_labels_train.csv')
+                            val_data, transform,
+                            dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
 
 #############################
 # NeurASP program
@@ -109,6 +131,7 @@ rank_value(q, 12).
 rank_value(k, 13).
 rank_value(a, 14).
 
+% suit_value(d,0). suit_value(c,13). suit_value(s,26). suit_value(h,39).
 suit_value(d,1). suit_value(c,2). suit_value(s,3). suit_value(h,4).
 
 % 2 Players
@@ -117,7 +140,8 @@ suit_value(d,1). suit_value(c,2). suit_value(s,3). suit_value(h,4).
 rules = '''
 result(X) :- suit(P1,S1), suit(P2,S2), suit_value(S1,SV1), suit_value(S2, SV2), 
              rank(P1,R1), rank(P2,R2), rank_value(R1,V1), rank_value(R2,V2), 
-             X = V1*SV1 + V2*SV2, P1!=P2.'''
+%             X = V1 + SV1 + V2 + SV2, P1!=P2.
+             X = V1 * SV1 + V2 * SV2, P1!=P2.'''
 
 neural_preds = '''
 nn(card(2,p), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]).
@@ -128,4 +152,3 @@ suit(P,d) :- card(P,p,C), C >= 39.
 rank(P,R) :- card(P,p,C), rank_value(R,C\\13+2).'''
 
 dprogram = facts + rules + neural_preds
-

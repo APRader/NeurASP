@@ -277,10 +277,10 @@ class NeurASP(object):
                 latentLabels = {}
                 for m in self.nnOutputs:
                     nnOutput[m] = {}
+                    latentLabels[m] = {}
                     for t in self.nnOutputs[m]:
                         # if data maps t to tuple (dataTensor, {'m': labelTensor})
                         if isinstance(data[t], tuple):
-                            latentLabels[m] = {}
                             dataTensor = data[t][0]
                             if m in data[t][1]:
                                 latentLabels[m][t] = data[t][1][m]
@@ -333,11 +333,11 @@ class NeurASP(object):
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
                         m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
                         if gradients[ruleIdx].size() == self.nnOutputs[m][t][i].size():
-                            self.nnGradients[m][t][i] = gradients[ruleIdx]
+                            self.nnGradients[m][t][i] = -gradients[ruleIdx]
                         else:
                             # Neural net output shape does not match gradient shape
                             # This is the case for binary predictions, so we only take the first entry of each gradient
-                            self.nnGradients[m][t][i] = gradients[ruleIdx][0]
+                            self.nnGradients[m][t][i] = -gradients[ruleIdx][0]
 
                     # Backpropagate calculated gradients
                     for m in nnOutput:
@@ -357,6 +357,45 @@ class NeurASP(object):
                                 loss = lossFunc(nnOutput[m][t].view(-1, self.n[m]), latentLabels[m][t])
                             loss.backward(retain_graph=True)
 
+                # Calculate and print training accuracy every accStep steps
+                if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
+                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'seed': seed,
+                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batchSize}
+                    print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
+
+                    for m in self.nnMapping:
+                        results[f'{m}_lr'] = self.optimizers[m].param_groups[0]['lr']
+                        results[f'{m}_weight_decay'] = self.optimizers[m].param_groups[0]['weight_decay']
+
+                    if valDataset:
+                        # Use validation set if it exists
+                        downAcc, latentAcc = self.calculate_accuracies(valDataset, dmvpp, storeSM, opt)
+                        results[f'downstream_val_accuracy'] = downAcc
+                        print(f"Downstream validation accuracy: {downAcc * 100:.2f}%")
+                        for m in latentAcc:
+                            if latentAcc[m] != 'unknown':
+                                # There exist latent accuracies
+                                results[f'{m}_nn_val_accuracy'] = latentAcc[m]
+                                print(f"Validation accuracy for {m} network: {latentAcc[m] * 100:.2f}%")
+                    else:
+                        # Otherwise using train set, which takes much longer
+                        downAcc, latentAcc = self.calculate_accuracies(dataset, dmvpp, storeSM, opt)
+                        results[f'downstream_train_accuracy'] = downAcc
+                        print(f"Downstream train accuracy: {downAcc * 100:.2f}%")
+                        for m in latentAcc:
+                            if latentAcc[m] != 'unknown':
+                                # There exist latent accuracies
+                                results[f'{m}_nn_train_accuracy'] = latentAcc[m]
+                                print(f"Train accuracy for {m} network: {latentAcc[m] * 100:.2f}%")
+
+                    # Write results into JSON lines file
+                    with open('results.jsonl', 'a') as f:
+                        f.write(json.dumps(results) + "\n")
+
+                    # Put networks back into train mode
+                    for m in self.nnMapping:
+                        self.nnMapping[m].train()
+
                 # Step 3: update the parameters
                 if (dataIdx + 1) % batchSize == 0:
                     for m in self.optimizers:
@@ -374,47 +413,6 @@ class NeurASP(object):
                                     dmvpp.parameters[ruleIdxMVPP][atomIdx] += lr * gradientsNormal[ruleIdx][atomIdx]
                         dmvpp.normalize_probs()
                         self.normalProbs = dmvpp.parameters[self.mvpp['nnPrRuleNum']:]
-
-                # Calculate and print training accuracy every accStep steps
-                if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
-                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'seed': seed,
-                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batchSize}
-                    print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
-
-                    for m in self.nnMapping:
-                        results[f'{m}_lr'] = self.optimizers[m].param_groups[0]['lr']
-                        results[f'{m}_weight_decay'] = self.optimizers[m].param_groups[0]['weight_decay']
-                        # Check if latent datasets exist for testing the latent accuracies
-                        if dataset.latent_data:
-                            dataloader = torch.utils.data.DataLoader(dataset=dataset.latent_data[m],
-                                                                     batch_size=64, shuffle=False, drop_last=False)
-                            accuracy, singleAccuracy = self.testNN(m, dataloader)
-                            results[f'{m}_nn_train_accuracy'] = accuracy/100
-                            print(f"Train accuracy for {m} network: {accuracy:.2f}%")
-                        if valDataset and valDataset.latent_data:
-                            dataloader = torch.utils.data.DataLoader(dataset=valDataset.latent_data[m],
-                                                                     batch_size=64, shuffle=False, drop_last=False)
-                            accuracy, singleAccuracy = self.testNN(m, dataloader)
-                            results[f'{m}_nn_val_accuracy'] = accuracy/100
-                            print(f"Val accuracy for {m} network: {accuracy:.2f}%")
-
-                    # Test downstream accuracy
-                    downAcc = self.downstream_accuracy(dataset, dmvpp, storeSM, opt)
-                    results[f'downstream_train_accuracy'] = downAcc
-                    print(f"Downstream accuracy: {downAcc*100:.2f}%")
-
-                    if valDataset:
-                        downAcc = self.downstream_accuracy(valDataset, dmvpp, storeSM, opt)
-                        results[f'downstream_val_accuracy'] = downAcc
-                        print(f"Downstream validation accuracy: {downAcc * 100:.2f}%")
-
-                    # Write results into JSON lines file
-                    with open('results.jsonl', 'a') as f:
-                        f.write(json.dumps(results) + "\n")
-
-                    # Put networks back into train mode
-                    for m in self.nnMapping:
-                        self.nnMapping[m].train()
 
             # Save the stable models in a pickle file
             if savePickle:
@@ -534,11 +532,22 @@ class NeurASP(object):
             print(
                 'The accuracy for constraint {} is {}'.format(programIdx + 1, float(count[programIdx]) / len(dataList)))
 
-    def downstream_accuracy(self, dataset, dmvpp, storeSM, opt):
+    def calculate_accuracies(self, dataset, dmvpp, storeSM, opt):
+        """
+        Calculates latent and downstream accuracies of all neural networks in task.
+        @param dataset: A dataset consisting of inputs and observations, and optionally latent labels
+        @param dmvpp: The MVPP object used for the task
+        @param storeSM: Whether stable models are stored in a variable
+        @param opt: Whether clingo should be run in optimisation mode
+        """
+        latentAccuracies = {}
+        numLatentLabels = {}
+        downstreamAccuracy = 0
         for func in self.nnMapping:
             self.nnMapping[func].eval()
+            latentAccuracies[func] = 0
+            numLatentLabels[func] = 0
 
-        correct_count = 0
         with torch.no_grad():
             for data, obs in dataset:
                 for key in list(data.keys()):
@@ -549,11 +558,19 @@ class NeurASP(object):
                     nnOutput[m] = {}
                     for t in self.nnOutputs[m]:
                         if isinstance(data[t], tuple):
+                            # The data contains latent labels
                             dataTensor = data[t][0]
+                            nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
+
+                            if m in data[t][1]:
+                                # There are latent labels for the m network, so we calculate the latent accuracy
+                                latentLabels = data[t][1][m]
+                                numLatentLabels[m] += latentLabels.numel()
+                                latentAccuracies[m] += np.count_nonzero(latentLabels == nnOutput[m][t].argmax(dim=1))
+
                         else:
                             dataTensor = data[t]
-
-                        nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
+                            nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
 
                 probs = []
                 try:
@@ -580,6 +597,12 @@ class NeurASP(object):
 
                 if (torch.stack(probs) == models).all(dim=1).any():
                     # The latent concept predictions form a valid model, hence the downstream prediction is correct
-                    correct_count += 1
+                    downstreamAccuracy += 1
 
-        return correct_count/len(dataset)
+        for m in latentAccuracies:
+            if numLatentLabels[m] > 0:
+                latentAccuracies[m] /= numLatentLabels[m]
+            else:
+                latentAccuracies[m] = 'unknown'
+
+        return downstreamAccuracy/len(dataset), latentAccuracies
