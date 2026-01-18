@@ -224,8 +224,8 @@ class NeurASP(object):
         dmvpp = MVPP(facts + mvppRules + mvpp)
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
-    def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False,
-              storeSM=True, smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown', valDataset=None):
+    def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False, storeSM=True,
+              smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown', valDataset=None, task='unknown'):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
@@ -241,6 +241,7 @@ class NeurASP(object):
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         @param seed: the seed that was used for random number generators, used when logging results
         @param valDataset: a dataset with validation labels for testing accuracies
+        @param task: a string representing the name of the task, used when logging results
         """
 
         # if the pickle file for stable models is given, we will either read all stable models from it or
@@ -357,9 +358,28 @@ class NeurASP(object):
                                 loss = lossFunc(nnOutput[m][t].view(-1, self.n[m]), latentLabels[m][t])
                             loss.backward(retain_graph=True)
 
+                # Step 3: update the parameters
+                if (dataIdx + 1) % batchSize == 0:
+                    for m in self.optimizers:
+                        self.optimizers[m].step()
+                        self.optimizers[m].zero_grad()
+
+                # If using semantic loss, we update probabilities in normal prob. rules
+                if lossFunc == 'semantic':
+                    if self.normalProbs:
+                        gradientsNormal = gradients[self.mvpp['nnPrRuleNum']:].tolist()
+                        for ruleIdx, ruleGradients in enumerate(gradientsNormal):
+                            ruleIdxMVPP = self.mvpp['nnPrRuleNum'] + ruleIdx
+                            for atomIdx, b in enumerate(dmvpp.learnable[ruleIdxMVPP]):
+                                if b == True:
+                                    dmvpp.parameters[ruleIdxMVPP][atomIdx] += lr * gradientsNormal[ruleIdx][atomIdx]
+                        dmvpp.normalize_probs()
+                        self.normalProbs = dmvpp.parameters[self.mvpp['nnPrRuleNum']:]
+
                 # Calculate and print training accuracy every accStep steps
                 if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
-                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'seed': seed,
+                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'task': task,
+                               'seed': seed,
                                'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batchSize}
                     print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
 
@@ -389,30 +409,12 @@ class NeurASP(object):
                                 print(f"Train accuracy for {m} network: {latentAcc[m] * 100:.2f}%")
 
                     # Write results into JSON lines file
-                    with open('results.jsonl', 'a') as f:
+                    with open(f'{task}_results.jsonl', 'a') as f:
                         f.write(json.dumps(results) + "\n")
 
                     # Put networks back into train mode
                     for m in self.nnMapping:
                         self.nnMapping[m].train()
-
-                # Step 3: update the parameters
-                if (dataIdx + 1) % batchSize == 0:
-                    for m in self.optimizers:
-                        self.optimizers[m].step()
-                        self.optimizers[m].zero_grad()
-
-                # If using semantic loss, we update probabilities in normal prob. rules
-                if lossFunc == 'semantic':
-                    if self.normalProbs:
-                        gradientsNormal = gradients[self.mvpp['nnPrRuleNum']:].tolist()
-                        for ruleIdx, ruleGradients in enumerate(gradientsNormal):
-                            ruleIdxMVPP = self.mvpp['nnPrRuleNum'] + ruleIdx
-                            for atomIdx, b in enumerate(dmvpp.learnable[ruleIdxMVPP]):
-                                if b == True:
-                                    dmvpp.parameters[ruleIdxMVPP][atomIdx] += lr * gradientsNormal[ruleIdx][atomIdx]
-                        dmvpp.normalize_probs()
-                        self.normalProbs = dmvpp.parameters[self.mvpp['nnPrRuleNum']:]
 
             # Save the stable models in a pickle file
             if savePickle:

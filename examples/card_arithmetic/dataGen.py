@@ -7,7 +7,6 @@ import numpy as np
 from torch.utils.data import Dataset
 from os.path import join
 from torchvision import transforms, io
-from data.playing_cards.dataset import PlayingCards
 
 path = os.path.abspath(__file__)
 dir_path = os.path.dirname(path)
@@ -74,81 +73,26 @@ def split_dataset(data_file):
     return train_data, val_data
 
 
-transform = transforms.Compose([
-            transforms.ToPILImage(),
-            transforms.Resize((274, 174)),
-            transforms.ToTensor(),
-        ])
+def get_dataset(task_name):
+    transform = transforms.Compose([
+        transforms.ToPILImage(),
+        transforms.Resize((274, 174)),
+        transforms.ToTensor(),
+    ])
 
-train_data, val_data = split_dataset(dir_path + '/data/card_arithmetic_2p_image_labels_30k.csv')
+    train_data, val_data = split_dataset(dir_path + f'/data/{task_name}_labels.csv')
 
-trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
-                              train_data, transform,
-                              dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
+    trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
+                                  train_data, transform,
+                                  dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
 
-valDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
-                            val_data, transform,
-                            dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
+    valDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
+                                val_data, transform,
+                                dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
 
-#############################
-# NeurASP program
-#############################
+    with open('data/playing_card_facts.lp') as file:
+        facts = file.read()
+    with open(f'data/{task_name}.lp') as file:
+        task_rules = file.read()
 
-facts = '''
-% Suits
-suit(h).
-suit(s).
-suit(d).
-suit(c).
-
-% Ranks
-rank(a).
-rank(2).
-rank(3).
-rank(4).
-rank(5).
-rank(6).
-rank(7).
-rank(8).
-rank(9).
-rank(10).
-rank(j).
-rank(q).
-rank(k).
-
-% Rank Value
-rank_value(2, 2).
-rank_value(3, 3).
-rank_value(4, 4).
-rank_value(5, 5).
-rank_value(6, 6).
-rank_value(7, 7).
-rank_value(8, 8).
-rank_value(9, 9).
-rank_value(10, 10).
-rank_value(j, 11).
-rank_value(q, 12).
-rank_value(k, 13).
-rank_value(a, 14).
-
-% suit_value(d,0). suit_value(c,13). suit_value(s,26). suit_value(h,39).
-suit_value(d,1). suit_value(c,2). suit_value(s,3). suit_value(h,4).
-
-% 2 Players
-% player(p1). player(p2).'''
-
-rules = '''
-result(X) :- suit(P1,S1), suit(P2,S2), suit_value(S1,SV1), suit_value(S2, SV2), 
-             rank(P1,R1), rank(P2,R2), rank_value(R1,V1), rank_value(R2,V2), 
-%             X = V1 + SV1 + V2 + SV2, P1!=P2.
-             X = V1 * SV1 + V2 * SV2, P1!=P2.'''
-
-neural_preds = '''
-nn(card(2,p), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]).
-suit(P,h) :- card(P,p,C), C <= 12.
-suit(P,c) :- card(P,p,C), C >= 13, C <= 25.
-suit(P,s) :- card(P,p,C), C >= 26, C <= 38.
-suit(P,d) :- card(P,p,C), C >= 39.
-rank(P,R) :- card(P,p,C), rank_value(R,C\\13+2).'''
-
-dprogram = facts + rules + neural_preds
+    return trainDataset, valDataset, facts + '\n\n' + task_rules

@@ -4,8 +4,10 @@ import random
 
 from newrasp import NeurASP
 from examples.follow_suit.network import Net
+from dataGen import get_dataset
 
 parser = argparse.ArgumentParser()
+parser.add_argument('--task', type=str)
 parser.add_argument('--batch_size', type=int, default=1)
 parser.add_argument('--learning_rate', '--lr', type=float, default=0.01)
 parser.add_argument('--weight_decay', type=float, default=0)
@@ -26,12 +28,14 @@ else:
     random.seed(seed)
 
 # Now that the seed is set, we can import the data
-from dataGen import trainDataset, valDataset, dprogram
+trainDataset, valDataset, dprogram = get_dataset(args.task)
 
 m = Net()
 nnMapping = {'card': m}
 optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)}
 
 NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
-NeurASPobj.learn(trainDataset, epoch=args.epochs, smPickle='card_arithmetic_2p_stable_models.pkl', lossFunc='semantic',
+# NeurASPobj.learn(trainDataset, epoch=args.epochs, smPickle=f'data/{args.task}_stable_models.pkl', lossFunc='semantic',
+#                  accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)
+NeurASPobj.learn(trainDataset, epoch=args.epochs, storeSM=False, lossFunc='semantic',
                  accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)
