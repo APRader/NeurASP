@@ -1,5 +1,7 @@
 import os
 import torch
+import re
+import clingo
 
 import pandas as pd
 import numpy as np
@@ -73,7 +75,7 @@ def split_dataset(data_file):
     return train_data, val_data
 
 
-def get_dataset(task_name):
+def get_dataset(task_name, image_data_folder):
     transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((274, 174)),
@@ -82,17 +84,87 @@ def get_dataset(task_name):
 
     train_data, val_data = split_dataset(dir_path + f'/data/{task_name}_labels.csv')
 
-    trainDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
+    trainDataset = CardArithmetic(f'{image_data_folder}/train',
                                   train_data, transform,
-                                  dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
+                                  f'{image_data_folder}/train/playing_card_labels_train.csv')
 
-    valDataset = CardArithmetic(dir_path + '/../../data/playing_cards/train',
+    valDataset = CardArithmetic(f'{image_data_folder}/train',
                                 val_data, transform,
-                                dir_path + '/../../data/playing_cards/train/playing_card_labels_train.csv')
+                                f'{image_data_folder}/train/playing_card_labels_train.csv')
 
-    with open('data/playing_card_facts.lp') as file:
+    with open(dir_path + '/data/playing_card_facts.lp') as file:
         facts = file.read()
-    with open(f'data/{task_name}.lp') as file:
+    with open(dir_path + f'/data/{task_name}.lp') as file:
         task_rules = file.read()
 
     return trainDataset, valDataset, facts + '\n\n' + task_rules
+
+
+def generate_dataset(task_name):
+    """ Generate a dataset from a task that includes input images and their downstream labels."""
+    with open(dir_path + '/data/playing_card_facts.lp') as file:
+        facts = file.read()
+    with open(dir_path + f'/data/{task_name}.lp') as file:
+        task_rules = ""
+        line = file.readline()
+        while line:
+            if line.startswith('nn('):
+                # Determine number of players from nn atom and don't add the atom to the program
+                match = re.search(r'card\(([0-9]+),p\)', line)
+                num_players = int(match[1])
+            else:
+                task_rules += line
+            line = file.readline()
+
+    # Generate all choices for suits and ranks
+    players = " ".join([f'player({i}).' for i in range(num_players)])
+    choices = "\n\n{suit(P,S): suit(S)}=1 :- player(P). {rank(P,R): rank(R)}=1 :- player(P)."
+    program = facts + '\n\n' + task_rules + players + choices
+
+    # Create a dataset with an entry for each player and a result entry
+    dataset = {f'player_{i + 1}': [] for i in range(num_players)}
+    dataset['result'] = []
+
+    def on_model(m):
+        atoms = str(m)
+        for i in range(num_players):
+            rank_match = re.search(fr'rank\({i},(\w+)\)', atoms)
+            suit_match = re.search(fr'suit\({i},(\w)\)', atoms)
+            dataset[f'player_{i + 1}'].append(rank_match.groups()[0] + suit_match.groups()[0])
+        result_match = re.search(r'result\((\d+)\)', atoms)
+        dataset['result'].append(f'{result_match.groups()[0]}')
+
+    showers = "#show suit/2. #show rank/2. #show result/1."
+
+    ctl = clingo.Control(['0'])
+    ctl.add("base", [], program + showers)
+    ctl.ground([("base", [])])
+
+    ctl.solve(on_model=on_model)
+
+    print(f"There are {len(set(dataset['result']))} unique labels.")
+
+    # Take at most 15,000 rows
+    semantic_dataset = pd.DataFrame(dataset).sample(n=15_000)
+
+    image_names = pd.read_csv('../../data/playing_cards/train/playing_card_labels_train.csv')
+    image_labels = pd.DataFrame()
+    final_labels = pd.DataFrame()
+
+    while len(final_labels) < 15_000:
+        for column in semantic_dataset.columns:
+            if column == 'result':
+                image_labels[column] = semantic_dataset[column]
+            else:
+                # For each card, replace its label with a random image idx of a card with that label
+                image_labels[column] = \
+                    semantic_dataset[column].apply(lambda rankuit: image_names.loc[image_names['label'] == rankuit]
+                    ['img'].sample().item())
+        final_labels = pd.concat([final_labels, image_labels])
+
+    final_labels = final_labels.sample(n=15_000)
+    final_labels.to_csv(f'{task_name}_labels.csv', index=False)
+
+
+if __name__ == '__main__':
+    generate_dataset('card_arithmetic_unique_3p')

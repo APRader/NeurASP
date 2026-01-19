@@ -1,10 +1,14 @@
 import argparse
 import torch
 import random
+import os
 
 from newrasp import NeurASP
 from examples.follow_suit.network import Net
 from dataGen import get_dataset
+
+path = os.path.abspath(__file__)
+dir_path = os.path.dirname(path)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--task', type=str)
@@ -28,7 +32,7 @@ else:
     random.seed(seed)
 
 # Now that the seed is set, we can import the data
-trainDataset, valDataset, dprogram = get_dataset(args.task)
+trainDataset, valDataset, dprogram = get_dataset(args.task, dir_path + '/../../data/playing_cards')
 
 m = Net()
 nnMapping = {'card': m}

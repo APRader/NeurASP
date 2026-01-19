@@ -365,7 +365,7 @@ class TestSpeeds(unittest.TestCase):
         from examples.follow_suit.dataGen import dataList, obsList, facts, rules, dprogram
         from examples.follow_suit.network import Net
 
-        print("\nFollow speed test")
+        print("\nFollow suit speed test")
         print("WARNING: This test typically takes hours to complete.")
 
         example_name = 'follow_suit'
@@ -402,3 +402,39 @@ class TestSpeeds(unittest.TestCase):
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
         assert (newrasp_time < slash_time)
+
+    def test_speeds_card_arithmetic(self):
+        """Test speeds of different implementations for the card arithmetic task."""
+        os.chdir(os.path.abspath(ROOT_DIR + '/../examples/card_arithmetic'))
+        from examples.card_arithmetic.dataGen import get_dataset
+        from examples.follow_suit.network import Net
+
+        print("\nCard arithmetic speed test")
+        example_name = 'card_arithmetic'
+
+        m = Net()
+        nnMapping = {'card': m}
+        optimizers = {'card': torch.optim.Adam(m.parameters())}
+
+        trainDataset, valDataset, dprogram = get_dataset('card_arithmetic_unique_3p', '../../data/playing_cards')
+
+        dataList = []
+        obsList = []
+
+        # Choose 100 examples
+        for idx, (data, obs) in enumerate(trainDataset):
+            if idx >= 5:
+                break
+            dataList.append({'p': data['p'][0]})
+            obsList.append(obs)
+
+        # Original code
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+
+        # New code
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+
+        print_times(example_name, neurasp_time, newrasp_time)
+
+        # New code should be faster than existing code
+        assert (newrasp_time < neurasp_time)
