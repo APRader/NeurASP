@@ -75,7 +75,7 @@ def split_dataset(data_file):
     return train_data, val_data
 
 
-def get_dataset(task_name, image_data_folder):
+def get_dataset(task_name, image_folder):
     transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((274, 174)),
@@ -84,13 +84,13 @@ def get_dataset(task_name, image_data_folder):
 
     train_data, val_data = split_dataset(dir_path + f'/data/{task_name}_labels.csv')
 
-    trainDataset = CardArithmetic(f'{image_data_folder}/train',
+    trainDataset = CardArithmetic(f'{image_folder}/train',
                                   train_data, transform,
-                                  f'{image_data_folder}/train/playing_card_labels_train.csv')
+                                  f'{image_folder}/train/playing_card_labels_train.csv')
 
-    valDataset = CardArithmetic(f'{image_data_folder}/train',
+    valDataset = CardArithmetic(f'{image_folder}/train',
                                 val_data, transform,
-                                f'{image_data_folder}/train/playing_card_labels_train.csv')
+                                f'{image_folder}/train/playing_card_labels_train.csv')
 
     with open(dir_path + '/data/playing_card_facts.lp') as file:
         facts = file.read()
@@ -100,8 +100,8 @@ def get_dataset(task_name, image_data_folder):
     return trainDataset, valDataset, facts + '\n\n' + task_rules
 
 
-def generate_dataset(task_name):
-    """ Generate a dataset from a task that includes input images and their downstream labels."""
+def generate_dataset_from_asp(task_name, image_folder):
+    """ Generate a dataset from an ASP task specification."""
     with open(dir_path + '/data/playing_card_facts.lp') as file:
         facts = file.read()
     with open(dir_path + f'/data/{task_name}.lp') as file:
@@ -146,8 +146,38 @@ def generate_dataset(task_name):
 
     # Take at most 15,000 rows
     semantic_dataset = pd.DataFrame(dataset).sample(n=15_000)
+    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
 
-    image_names = pd.read_csv('../../data/playing_cards/train/playing_card_labels_train.csv')
+
+def generate_dataset_from_fun(fun, num_players, task_name, image_folder):
+    """ Generate a dataset using a function that calculates the result given concepts."""
+    suits = ['h', 'c', 's', 'd']
+    ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k', 'a']
+    concepts = []
+    for suit in suits:
+        for rank in ranks:
+            concepts.append(rank + suit)
+    data = np.random.choice(concepts, size=(15000, num_players))
+    results = np.apply_along_axis(func1d=fun, axis=1, arr=data)
+    results = results.reshape(-1, 1)
+    data = np.hstack([data, results])
+    column_names = [f'player_{i + 1}' for i in range(num_players)] + ['result']
+    semantic_dataset = pd.DataFrame(data, columns=column_names)
+
+    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
+
+
+def card_arithmetic_unique(data_row):
+    suit_values = {'h': 39, 'c': 13, 's': 26, 'd': 0}
+    rank_values = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+                   'j': 11, 'q': 12, 'k': 13, 'a': 14}
+    rankuit_to_num = np.vectorize(lambda rankuit: rank_values[rankuit[:-1]] + suit_values[rankuit[-1]])
+    return np.sum(rankuit_to_num(data_row))
+
+
+def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
+    """Take a dataset with semantic entries (e.g. 5d) and replace them with random image ids of that card."""
+    image_names = pd.read_csv(f'{image_folder}/train/playing_card_labels_train.csv')
     image_labels = pd.DataFrame()
     final_labels = pd.DataFrame()
 
@@ -167,4 +197,6 @@ def generate_dataset(task_name):
 
 
 if __name__ == '__main__':
-    generate_dataset('card_arithmetic_unique_3p')
+    # generate_dataset_from_asp('card_arithmetic_unique_4p', image_folder='../../data')
+    generate_dataset_from_fun(card_arithmetic_unique, 4, 'card_arithmetic_unique_4p',
+                              image_folder=dir_path + '/../../data/playing_cards')

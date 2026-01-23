@@ -39,7 +39,8 @@ nnMapping = {'card': m}
 optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)}
 
 NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
-# NeurASPobj.learn(trainDataset, epoch=args.epochs, smPickle=f'data/{args.task}_stable_models.pkl', lossFunc='semantic',
-#                  accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)
-NeurASPobj.learn(trainDataset, epoch=args.epochs, storeSM=False, lossFunc='semantic',
-                 accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)
+NeurASPobj.learn(trainDataset, epoch=args.epochs, smPickle=dir_path+f'/data/{args.task}_stable_models.pkl',
+                 lossFunc='semantic', accStep=args.checkpoint_freq, batchSize=args.batch_size, bar=True, seed=seed,
+                 valDataset=valDataset, task=args.task)
+# NeurASPobj.learn(trainDataset, epoch=args.epochs, storeSM=False, lossFunc='semantic',
+#                  accStep=0, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)
