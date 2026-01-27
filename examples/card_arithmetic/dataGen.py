@@ -83,6 +83,7 @@ def get_dataset(task_name, image_folder):
     ])
 
     train_data, val_data = split_dataset(dir_path + f'/data/{task_name}_labels.csv')
+    test_data = pd.read_csv(dir_path + f'/data/{task_name}_labels_test.csv')
 
     trainDataset = CardArithmetic(f'{image_folder}/train',
                                   train_data, transform,
@@ -145,7 +146,10 @@ def generate_dataset_from_asp(task_name, image_folder):
     print(f"There are {len(set(dataset['result']))} unique labels.")
 
     # Take at most 15,000 rows
-    semantic_dataset = pd.DataFrame(dataset).sample(n=15_000)
+    if len(dataset) > 15_000:
+        semantic_dataset = pd.DataFrame(dataset).sample(n=15_000)
+    else:
+        semantic_dataset = pd.DataFrame(dataset)
     convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
 
 
@@ -163,7 +167,7 @@ def generate_dataset_from_fun(fun, num_players, task_name, image_folder):
     data = np.hstack([data, results])
     column_names = [f'player_{i + 1}' for i in range(num_players)] + ['result']
     semantic_dataset = pd.DataFrame(data, columns=column_names)
-
+    print(f"There are {len(set(semantic_dataset['result']))} unique labels.")
     convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
 
 
@@ -177,7 +181,7 @@ def card_arithmetic_unique(data_row):
 
 def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
     """Take a dataset with semantic entries (e.g. 5d) and replace them with random image ids of that card."""
-    image_names = pd.read_csv(f'{image_folder}/train/playing_card_labels_train.csv')
+    image_names = pd.read_csv(f'{image_folder}/playing_card_labels.csv')
     image_labels = pd.DataFrame()
     final_labels = pd.DataFrame()
 
@@ -197,6 +201,6 @@ def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
 
 
 if __name__ == '__main__':
-    # generate_dataset_from_asp('card_arithmetic_unique_4p', image_folder='../../data')
-    generate_dataset_from_fun(card_arithmetic_unique, 4, 'card_arithmetic_unique_4p',
-                              image_folder=dir_path + '/../../data/playing_cards')
+    generate_dataset_from_asp('card_arithmetic_unique_2p', image_folder=dir_path + '/../../data/playing_cards/test')
+    # generate_dataset_from_fun(card_arithmetic_unique, 4, 'card_arithmetic_unique_4p',
+    #                           image_folder=dir_path + '/../../data/playing_cards')

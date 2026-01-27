@@ -7,7 +7,6 @@ import time
 import clingo
 import torch
 import numpy as np
-import torch.nn as nn
 from tqdm import tqdm
 
 from mvpp_new import MVPP
@@ -224,8 +223,8 @@ class NeurASP(object):
         dmvpp = MVPP(facts + mvppRules + mvpp)
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
-    def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False, storeSM=True,
-              smPickle=None, accStep=0, batchSize=1, bar=False, seed='unknown', valDataset=None, task='unknown'):
+    def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False, storeSM=True, accStep=0,
+              batchSize=1, bar=False, seed='unknown', valDataset=None, task='unknown'):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
@@ -235,7 +234,6 @@ class NeurASP(object):
         @param method: a string in {'exact', 'sampling'} denoting whether the gradients are computed exactly or by sampling
         @param lr: a real number between 0 and 1 denoting the learning rate for the probabilities in probabilistic rules
         @param storeSM: a boolean denoting whether to store stable models rather than recompute them for each example
-        @param smPickle: a file name denoting where to import/save stable models
         @param accStep: an integer denoting the frequency of testing and printing the accuracy
         @param batchSize: a positive integer denoting the batch size, i.e., how many data instances do we use to update the NN parameters
         @param bar: a boolean value denoting whether to show a bar to visualize training process
@@ -244,16 +242,16 @@ class NeurASP(object):
         @param task: a string representing the name of the task, used when logging results
         """
 
-        # if the pickle file for stable models is given, we will either read all stable models from it or
-        # store all newly generated stable models in that pickle file in case the pickle file cannot be loaded
+        # If storeSM is true, we try to load stable models from the corresponding file
+        # Otherwise, we will save it into a file at the end of the first epoch
         savePickle = False
-        if smPickle is not None:
-            storeSM = True
+        if storeSM:
             try:
-                with open(smPickle, 'rb') as fp:
+                with open(f'saved_models/{task}_stable_models.pkl', 'rb') as fp:
                     self.stableModels = pickle.load(fp)
             except FileNotFoundError:
                 savePickle = True
+        bestDownAcc = 0
 
         # Get the mvpp program by self.mvpp, so far self.mvpp['program'] is a string
         dmvpp = MVPP(self.mvpp['program'])
@@ -407,9 +405,14 @@ class NeurASP(object):
                                 # There exist latent accuracies
                                 results[f'{m}_nn_train_accuracy'] = latentAcc[m]
                                 print(f"Train accuracy for {m} network: {latentAcc[m] * 100:.2f}%")
+                    # Save the model with the best downstream accuracy
+                    if downAcc > bestDownAcc:
+                        bestDownAcc = downAcc
+                        for m in self.nnMapping:
+                            torch.save(self.nnMapping[m].state_dict(), f'saved_models/{task}_{m}_{seed}.pth')
 
                     # Write results into JSON lines file
-                    with open(f'{task}_results.jsonl', 'a') as f:
+                    with open(f'results/{task}_results.jsonl', 'a') as f:
                         f.write(json.dumps(results) + "\n")
 
                     # Put networks back into train mode
@@ -418,9 +421,8 @@ class NeurASP(object):
 
             # Save the stable models in a pickle file
             if savePickle:
-                with open(smPickle, 'wb') as fp:
+                with open(f'saved_models/{task}_stable_models.pkl', 'wb') as fp:
                     pickle.dump(self.stableModels, fp)
-                savePickle = False
 
     def testNN(self, nn, testLoader):
         """
