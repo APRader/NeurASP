@@ -2,7 +2,7 @@ import pickle
 import re
 import sys
 import json
-import time
+import os
 
 import clingo
 import torch
@@ -412,6 +412,8 @@ class NeurASP(object):
                             torch.save(self.nnMapping[m].state_dict(), f'saved_models/{task}_{m}_{seed}.pth')
 
                     # Write results into JSON lines file
+                    if not os.path.isdir('results'):
+                        os.mkdir('saved_models')
                     with open(f'results/{task}_results.jsonl', 'a') as f:
                         f.write(json.dumps(results) + "\n")
 
@@ -421,6 +423,8 @@ class NeurASP(object):
 
             # Save the stable models in a pickle file
             if savePickle:
+                if not os.path.isdir('saved_models'):
+                    os.mkdir('saved_models')
                 with open(f'saved_models/{task}_stable_models.pkl', 'wb') as fp:
                     pickle.dump(self.stableModels, fp)
 

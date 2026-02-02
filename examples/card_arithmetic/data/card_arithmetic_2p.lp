@@ -1,0 +1,12 @@
+% Suit values
+suit_value(d,1). suit_value(c,2). suit_value(s,3). suit_value(h,4).
+
+% Result calculation
+player_value(P,RV*SV) :- suit(P,S), rank(P,R), rank_value(R,RV), suit_value(S,SV).
+sum(0,V) :- player_value(0,V).
+sum(P,V1+V2) :- sum(P-1,V1), player_value(P,V2).
+result(X) :- sum(1,X).
+
+
+% Neural predicate
+nn(card(2,p), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]).

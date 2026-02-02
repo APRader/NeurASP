@@ -83,7 +83,7 @@ def get_dataset(task_name, image_folder):
     ])
 
     train_data, val_data = split_dataset(dir_path + f'/data/{task_name}_labels.csv')
-    test_data = pd.read_csv(dir_path + f'/data/{task_name}_labels_test.csv')
+    # test_data = pd.read_csv(dir_path + f'/data/{task_name}_labels_test.csv')
 
     trainDataset = CardArithmetic(f'{image_folder}/train',
                                   train_data, transform,
@@ -198,6 +198,7 @@ def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
 
     final_labels = final_labels.sample(n=15_000)
     final_labels.to_csv(f'{task_name}_labels.csv', index=False)
+    print(f"Wrote dataset to {task_name}_labels.csv")
 
 
 if __name__ == '__main__':

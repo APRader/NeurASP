@@ -3,6 +3,7 @@ import os
 import torch
 import time
 import random
+import json
 
 import numpy as np
 
@@ -10,7 +11,6 @@ from neurasp import NeurASP
 from newrasp import NeurASP as NewrASP
 from unittest import mock
 from slash import SLASH
-
 from mvpp import MVPP
 from mvpp_new import MVPP as MVPPNew
 from mvpp_slash import MVPP as MVPPSlash
@@ -113,7 +113,12 @@ def print_times(example_name, neurasp_time, newrasp_time, slash_time=None):
 
 class TestSpeeds(unittest.TestCase):
 
-    def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40):
+    def test_speed_synthetic(self, num_models=1000, num_inputs=20, num_concepts=40, seed=None):
+        if not seed:
+            seed = random.randint(0, 100000)
+        torch.manual_seed(seed)
+        random.seed(seed)
+
         print(f"\nSynthetic speed test with {num_models} models, {num_inputs} inputs and {num_concepts} concepts.")
         models_new = torch.randint(0, num_concepts, (num_models, num_inputs))
         models = [[f"test(i{idx},{value})" for idx, value in enumerate(model)] for model in models_new]
@@ -159,28 +164,46 @@ class TestSpeeds(unittest.TestCase):
             mvpp_new.mvppLearnRule(models_new, torch.Tensor(probs), 5)
             newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
 
-        print(f"Old prob time: {neurasp_prob_time}")
-        print(f"SLASH prob time: {slash_prob_time}")
-        print(f"New prob time: {newrasp_prob_time}")
-        print("==========")
-        print(f"Old grad time: {neurasp_grad_time}")
-        print(f"SLASH grad time: {slash_grad_time}")
-        print(f"New grad time: {newrasp_grad_time}")
+        # print(f"Old prob time: {neurasp_prob_time}")
+        # print(f"SLASH prob time: {slash_prob_time}")
+        # print(f"New prob time: {newrasp_prob_time}")
+        # print("==========")
+        # print(f"Old grad time: {neurasp_grad_time}")
+        # print(f"SLASH grad time: {slash_grad_time}")
+        # print(f"New grad time: {newrasp_grad_time}")
+
+        timings = {'task': 'synthetic', 'seed': seed, 'num_models': num_models, 'num_concepts': num_concepts,
+                   'num_inputs': num_inputs, 'neurasp_prob_time': neurasp_prob_time,
+                   'slash_prob_time': slash_prob_time, 'newrasp_prob_time': newrasp_prob_time,
+                   'neurasp_grad_time': neurasp_grad_time, 'slash_grad_time': slash_grad_time,
+                   'newrasp_grad_time': newrasp_grad_time}
+
+        with open(f'timings.jsonl', 'a') as f:
+            f.write(json.dumps(timings) + "\n")
 
         assert (newrasp_prob_time + newrasp_grad_time < neurasp_prob_time + neurasp_grad_time)
         assert (newrasp_prob_time + newrasp_grad_time < slash_prob_time + slash_grad_time)
 
     def test_speeds_synthetic(self):
         """Test speeds of different implementations of probability and gradient calculations with synthetic data"""
+        for _ in range(5):
+            self.test_speed_synthetic(100, 10, 10)
+            self.test_speed_synthetic(1000, 10, 10)
+            self.test_speed_synthetic(10000, 10, 10)
+            self.test_speed_synthetic(100000, 10, 10)
+            self.test_speed_synthetic(1000000, 10, 10)
 
-        # 100 models with 10 inputs and 15 possible concepts
-        self.test_speed_synthetic(100, 10, 15)
+            self.test_speed_synthetic(100, 10, 10)
+            self.test_speed_synthetic(100, 100, 10)
+            self.test_speed_synthetic(100, 1000, 10)
+            self.test_speed_synthetic(100, 10000, 10)
+            self.test_speed_synthetic(100, 100000, 10)
 
-        # 1000 models with 18 inputs and 27 possible concepts
-        self.test_speed_synthetic(1000, 18, 27)
-
-        # 10000 models with 25 inputs and 40 possible concepts
-        self.test_speed_synthetic(10000, 25, 40)
+            self.test_speed_synthetic(100, 10, 10)
+            self.test_speed_synthetic(100, 10, 100)
+            self.test_speed_synthetic(100, 10, 1000)
+            self.test_speed_synthetic(100, 10, 10000)
+            self.test_speed_synthetic(100, 10, 100000)
 
     def test_speeds_mnist_add(self):
         """Test speeds of different implementations for the MNIST Addition task"""
