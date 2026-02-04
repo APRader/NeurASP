@@ -406,6 +406,8 @@ class NeurASP(object):
                                 results[f'{m}_nn_train_accuracy'] = latentAcc[m]
                                 print(f"Train accuracy for {m} network: {latentAcc[m] * 100:.2f}%")
                     # Save the model with the best downstream accuracy
+                    if not os.path.isdir('saved_models'):
+                        os.mkdir('saved_models')
                     if downAcc > bestDownAcc:
                         bestDownAcc = downAcc
                         for m in self.nnMapping:
@@ -413,7 +415,7 @@ class NeurASP(object):
 
                     # Write results into JSON lines file
                     if not os.path.isdir('results'):
-                        os.mkdir('saved_models')
+                        os.mkdir('results')
                     with open(f'results/{task}_results.jsonl', 'a') as f:
                         f.write(json.dumps(results) + "\n")
 

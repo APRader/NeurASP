@@ -3,7 +3,7 @@ import json
 import matplotlib.pyplot as plt
 
 
-def create_line_graph(filename='results.jsonl', acc='downstream'):
+def create_acc_graph(filename='results.jsonl', acc='downstream'):
     """
     Imports data from a JSON Lines file, groups by seed, and generates a line graph
     of validation accuracy vs. epoch, using hyperparameters for the legend.
@@ -110,7 +110,74 @@ def create_line_graph(filename='results.jsonl', acc='downstream'):
     plt.savefig(output_filename)
     print(f"Plot saved successfully as: {output_filename}")
 
+def create_time_graph(filename='timings.jsonl'):
+    data = []
+
+    with open(filename, 'r') as f:
+        for line in f:
+            record = json.loads(line)
+
+            flat_record = {
+                # 'seed': record.get('seed'),
+                # 'task': record.get('task'),
+                'num_models': record.get('num_models'),
+                'neurasp_prob_time': record.get('neurasp_prob_time'),
+                'slash_prob_time': record.get('slash_prob_time'),
+                'newrasp_prob_time': record.get('newrasp_prob_time'),
+                'neurasp_grad_time': record.get('neurasp_grad_time'),
+                'slash_grad_time': record.get('slash_grad_time'),
+                'newrasp_grad_time': record.get('newrasp_grad_time'),
+            }
+            data.append(flat_record)
+    df = pd.DataFrame(data)
+    stats = df.groupby('num_models').agg(['mean', 'std']).reset_index()
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    methods = [
+        ('neurasp', 'r', 'NeurASP original', 'o'),
+        ('slash', 'b', 'SLASH', 'x'),
+        ('newrasp', 'tab:orange', 'NeurASP improved', 'D')
+    ]
+
+    def add_plot_lines(ax, prefix, title):
+        """Helper to add mean lines and std-dev shading to a specific axis."""
+        for key, color, label, marker in methods:
+            col_name = f'{key}_{prefix}_time'
+
+            x = stats['num_models']
+            y_mean = stats[col_name]['mean']
+            y_std = stats[col_name]['std']
+
+            # Plot the average line
+            ax.plot(x, y_mean, label=label, color=color, marker=marker, linewidth=2)
+
+            # Fill the standard deviation area
+            ax.fill_between(x, y_mean - y_std, y_mean + y_std, color=color, alpha=0.15)
+
+        ax.set_title(title, fontsize=15, fontweight='bold')
+        ax.set_xlabel('Number of answer sets', fontsize=14)
+        ax.set_ylabel('Time (seconds)', fontsize=14)
+        ax.set_xscale('log', base=10)
+        ax.set_yscale('log')
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.6)
+        ax.legend(fontsize=11)
+
+    # Create the two subplots
+    add_plot_lines(ax1, 'prob', 'Probability calculation speeds')
+    add_plot_lines(ax2, 'grad', 'Gradient calculation speeds')
+
+    # plt.suptitle(f"Performance Analysis: {df['task'].iloc[0] if not df.empty else ''}", fontsize=16)
+    plt.tight_layout()
+
+    # Save the output
+    output_name = "synthetic_timings.pdf"
+    plt.savefig(output_name, format='pdf')
+    print(f"Plot saved as {output_name}")
+    plt.show()
+
 
 if __name__ == "__main__":
-    create_line_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl")
-    create_line_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl", acc='latent')
+    # create_acc_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl")
+    # create_acc_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl", acc='latent')
+    create_time_graph("results/synthetic_timings.jsonl")
