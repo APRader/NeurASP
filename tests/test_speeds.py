@@ -45,7 +45,7 @@ def sample_examples(dataList, obsList, sample_size):
 
 
 def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=False, batch_size=64,
-                          gpu=False):
+                          gpu=False, epoch=1):
     """Measure the speed of the original NeurASP code for an example."""
     NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=gpu)
     with (mock.patch.object(MVPP, 'find_k_SM_under_obs',
@@ -57,11 +57,12 @@ def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
           mock.patch.object(MVPP, 'mvppLearnRule',
                             time_method(MVPP, 'mvppLearnRule', f'{example_name}_grad'))):
         start_time = time.perf_counter()
-        NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=1, opt=opt, batchSize=batch_size, storeSM=True)
+        NeurASPobj.learn(dataList=dataList, obsList=obsList, epoch=epoch, opt=opt, batchSize=batch_size, storeSM=True)
         return time.perf_counter() - start_time
 
 
-def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name, gpu=False, p_num=1, method='same'):
+def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name, gpu=False, p_num=1,
+                        method='same', epoch=1):
     """Measure the speed of the SLASH code for an example."""
     SLASHobj = SLASH(dprogram, nnMapping, optimizers, gpu=gpu)
     if method == 'same':
@@ -75,11 +76,11 @@ def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example
           mock.patch.object(MVPPSlash, 'mvppLearnRule',
                             time_method(MVPPSlash, 'mvppLearnRule', f'slash_{example_name}_grad'))):
         start_time = time.perf_counter()
-        SLASHobj.learn(dataListLoader, 1, batched_pass=True, p_num=p_num, method=method)
+        SLASHobj.learn(dataListLoader, epoch, batched_pass=True, p_num=p_num, method=method)
         return time.perf_counter() - start_time
 
 
-def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name, opt=False):
+def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name, opt=False, epoch=1):
     """Measure the speed of the new implementation of NeurASP for an example."""
     NewrASPobj = NewrASP(dprogram, nnMapping, optimizers)
     with (mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
@@ -89,7 +90,7 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name
           mock.patch.object(MVPPNew, 'mvppLearnRule',
                             time_method(MVPPNew, 'mvppLearnRule', f'new_{example_name}_grad'))):
         start_time = time.perf_counter()
-        NewrASPobj.learn(dataset, epoch=1, opt=opt)
+        NewrASPobj.learn(dataset, epoch=epoch, opt=opt)
         return time.perf_counter() - start_time
 
 
@@ -346,9 +347,13 @@ class TestSpeeds(unittest.TestCase):
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
 
-    def test_speeds_member(self):
+    def test_speeds_member(self, seed=None):
         """Test speeds of different implementations for the Member task"""
         os.chdir(os.path.dirname(os.path.abspath(__file__)) + '/../examples/member5')
+        if not seed:
+            seed = random.randint(0, 100000)
+        torch.manual_seed(seed)
+        random.seed(seed)
         from examples.member5.dataGen import dataList, obsList
         from examples.member5.network import Net
 
@@ -359,24 +364,44 @@ class TestSpeeds(unittest.TestCase):
                     "member(D,0) :- digit(0,i,N1), digit(1,i,N2), digit(2,i,N3), digit(3,i,N4), digit(4,i,N5),\n"
                     "check(D), D!=N1, D!=N2, D!=N3, D!=N4, D!=N5.\n"
                     "member(D,1) :- check(D), not member(D,0).")
+        slash_program = ("img(i1). img(i2). img(i3). img(i4). img(i5).\n"
+                         "npp(digit(1,X), [0,1,2,3,4,5,6,7,8,9]) :- img(X).\n"
+                         "member(D,0) :- digit(0,+i1,-N1), digit(0,+i2,-N2), digit(0,+i3,-N3), digit(0,+i4,-N4), digit(0,+i5,-N5), check(D), D!=N1, D!=N2, D!=N3, D!=N4, D!=N5.\n"
+                         "member(D,1) :- check(D), not member(D,0).")
 
         m = Net()
         nnMapping = {'digit': m}
-        optimizers = {'digit': torch.optim.Adam(m.parameters())}
+        optimizers = {'digit': torch.optim.Adam(m.parameters(), lr=0.001)}
 
         # Choose 10 random examples
         dataList, obsList = sample_examples(dataList, obsList, 10)
 
         # Original code
-        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, epoch=3)
+
+        # SLASH code
+        m = Net()
+        nnMapping = {'digit': m}
+        optimizers = {'digit': torch.optim.Adam(m.parameters(), lr=0.001)}
+        dataList_slash = [{f'i{n+1}': dataDict['i'][n] for n in range(5)}for dataDict in dataList]
+        dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)), batch_size=64)
+        slash_time = measure_slash_speed(slash_program, nnMapping, optimizers, dataListLoader, example_name, epoch=3)
 
         # New code
-        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+        m = Net()
+        nnMapping = {'digit': m}
+        optimizers = {'digit': torch.optim.Adam(m.parameters(), lr=0.001)}
+        dataList_new = [{k: i.squeeze(0) for k, i in dataDict.items()} for dataDict in dataList]
+        dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_new, obsList)), batch_size=64)
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name, epoch=3)
 
-        save_timings(example_name, neurasp_time, newrasp_time)
+        save_timings(example_name, neurasp_time, newrasp_time, slash_time, seed=seed)
+
+        os.remove('saved_models/unknown_stable_models.pkl')
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
+        assert (newrasp_time < slash_time)
 
     def test_speeds_shortest_path(self):
         """Test speeds of different implementations for the Shortest Path task"""
