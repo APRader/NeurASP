@@ -18,6 +18,8 @@ class Net(nn.Module):
         self.softmax = nn.Softmax(1)
 
     def forward(self, x, marg_idx=None, type=1):
+        if x.dim() == 5:
+            x = x.view(x.size(0)*x.size(1), x.size(2), x.size(3), x.size(4))
         x = self.pool(self.ReLU(self.conv1(x)))
         x = self.pool(self.ReLU(self.conv2(x)))
         x = self.pool(self.ReLU(self.conv3(x)))

@@ -224,7 +224,7 @@ class NeurASP(object):
         return dmvpp.find_one_most_probable_SM_under_obs_noWC(obs=obs)
 
     def learn(self, dataset, epoch, lossFunc='semantic', method='exact', lr=0.01, opt=False, storeSM=True, accStep=0,
-              batchSize=1, bar=False, seed='unknown', valDataset=None, task='unknown'):
+              bar=False, seed='unknown', valDataset=None, task='unknown'):
         """
         @param dataset: a dataset consisting of inputs and observations,
                         each input is a dict, mapping terms to a tensor,
@@ -235,7 +235,6 @@ class NeurASP(object):
         @param lr: a real number between 0 and 1 denoting the learning rate for the probabilities in probabilistic rules
         @param storeSM: a boolean denoting whether to store stable models rather than recompute them for each example
         @param accStep: an integer denoting the frequency of testing and printing the accuracy
-        @param batchSize: a positive integer denoting the batch size, i.e., how many data instances do we use to update the NN parameters
         @param bar: a boolean value denoting whether to show a bar to visualize training process
         @param seed: the seed that was used for random number generators, used when logging results
         @param valDataset: a dataset with validation labels for testing accuracies
@@ -279,7 +278,7 @@ class NeurASP(object):
                     latentLabels[m] = {}
                     for t in self.nnOutputs[m]:
                         # if data maps t to tuple (dataTensor, {'m': labelTensor})
-                        if isinstance(data[t], tuple):
+                        if isinstance(data[t], tuple) or isinstance(data[t], list):
                             dataTensor = data[t][0]
                             if m in data[t][1]:
                                 latentLabels[m][t] = data[t][1][m]
@@ -295,54 +294,54 @@ class NeurASP(object):
                         self.nnGradients[m][t] = [0.0 for i in self.nnOutputs[m][t]]
 
                 if lossFunc == 'semantic':
-                    # Step 2.1: replace the parameters in the MVPP program with nn outputs
-                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                        dmvpp.parameters[ruleIdx] = self.nnOutputs[m][t][i]
-                        if len(dmvpp.parameters[ruleIdx].size()) == 0:
-                            # Prediction is a single number, signifying probability of being true
-                            # We transform it into a vector of 2 numbers: prob of true and prob of false
-                            dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
-                                                                      1 - dmvpp.parameters[ruleIdx]])
+                    for b in range(len(obs)):
+                        # Replace the parameters in the MVPP program with nn outputs
+                        for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                            m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                            dmvpp.parameters[ruleIdx] = self.nnOutputs[m][t][b*self.e[m]+i]
+                            if len(dmvpp.parameters[ruleIdx].size()) == 0:
+                                # Prediction is a single number, signifying probability of being true
+                                # We transform it into a vector of 2 numbers: prob of true and prob of false
+                                dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
+                                                                          1 - dmvpp.parameters[ruleIdx]])
 
-                    # Step 2.2: replace the parameters for normal prob. rules in the MVPP program with updated probabilities
-                    if self.normalProbs:
-                        for ruleIdx, probs in enumerate(self.normalProbs):
-                            dmvpp.parameters[self.mvpp['nnPrRuleNum'] + ruleIdx] = torch.Tensor(probs)
+                        # Replace the parameters for normal prob. rules in the MVPP program with updated probabilities
+                        if self.normalProbs:
+                            for ruleIdx, probs in enumerate(self.normalProbs):
+                                dmvpp.parameters[self.mvpp['nnPrRuleNum'] + ruleIdx] = torch.Tensor(probs)
 
-                    # Step 2.3: compute the gradients
-                    dmvpp.normalize_probs()
-                    if storeSM:
-                        try:
-                            models = self.stableModels[obs]
-                        except KeyError:
-                            models = dmvpp.find_k_SM_under_obs(obs, k=0, opt=opt)
-                            self.stableModels[obs] = models
-                        gradients = dmvpp.mvppLearn(models)
-                    else:
-                        if method == 'exact':
-                            gradients = dmvpp.gradients_one_obs(obs, opt=opt)
-                        elif method == 'sampling':
-                            models = dmvpp.sample_obs(obs, num=10)
+                        # Compute the gradients
+                        dmvpp.normalize_probs()
+                        if storeSM:
+                            try:
+                                models = self.stableModels[obs[b]]
+                            except KeyError:
+                                models = dmvpp.find_k_SM_under_obs(obs[b], k=0, opt=opt)
+                                self.stableModels[obs[b]] = models
                             gradients = dmvpp.mvppLearn(models)
                         else:
-                            print('Error: the method \'%s\' should be either \'exact\' or \'sampling\'', method)
+                            if method == 'exact':
+                                gradients = dmvpp.gradients_one_obs(obs[b], opt=opt)
+                            elif method == 'sampling':
+                                models = dmvpp.sample_obs(obs[b], num=10)
+                                gradients = dmvpp.mvppLearn(models)
+                            else:
+                                print('Error: the method \'%s\' should be either \'exact\' or \'sampling\'', method)
 
-                    # Update parameters in neural networks
-                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                        if gradients[ruleIdx].size() == self.nnOutputs[m][t][i].size():
-                            self.nnGradients[m][t][i] = -gradients[ruleIdx]
-                        else:
-                            # Neural net output shape does not match gradient shape
-                            # This is the case for binary predictions, so we only take the first entry of each gradient
-                            self.nnGradients[m][t][i] = -gradients[ruleIdx][0]
+                        # Update parameters in neural networks
+                        for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                            m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                            if gradients[ruleIdx].size() == self.nnOutputs[m][t][i].size():
+                                self.nnGradients[m][t][b*self.e[m]+i] = -gradients[ruleIdx]
+                            else:
+                                # Neural net output shape does not match gradient shape
+                                # This is the case for binary predictions, so we only take the first entry of each gradient
+                                self.nnGradients[m][t][b*self.e[m]+i] = -gradients[ruleIdx][0]
 
                     # Backpropagate calculated gradients
                     for m in nnOutput:
                         for t in nnOutput[m]:
-                            # We set retain_graph to true, since we only call step() every batchSize iterations
-                            nnOutput[m][t].backward(torch.stack(self.nnGradients[m][t]).to(self.device), retain_graph=True)
+                            nnOutput[m][t].backward(torch.stack(self.nnGradients[m][t]).to(self.device))
                 else:
                     # We use fully supervised loss with latent labels
                     for m in latentLabels:
@@ -354,13 +353,11 @@ class NeurASP(object):
                                                      latentLabels[m][t].long().view(-1))
                             else:
                                 loss = lossFunc(nnOutput[m][t].view(-1, self.n[m]), latentLabels[m][t])
-                            loss.backward(retain_graph=True)
+                            loss.backward()
 
-                # Step 3: update the parameters
-                if (dataIdx + 1) % batchSize == 0:
-                    for m in self.optimizers:
-                        self.optimizers[m].step()
-                        self.optimizers[m].zero_grad()
+                # Update the parameters
+                self.optimizers[m].step()
+                self.optimizers[m].zero_grad()
 
                 # If using semantic loss, we update probabilities in normal prob. rules
                 if lossFunc == 'semantic':
@@ -378,7 +375,7 @@ class NeurASP(object):
                 if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
                     results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'task': task,
                                'seed': seed,
-                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batchSize}
+                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': dataset.batch_size}
                     print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
 
                     for m in self.nnMapping:
@@ -567,7 +564,7 @@ class NeurASP(object):
                 for m in self.nnOutputs:
                     nnOutput[m] = {}
                     for t in self.nnOutputs[m]:
-                        if isinstance(data[t], tuple):
+                        if isinstance(data[t], tuple) or isinstance(data[t], list):
                             # The data contains latent labels
                             dataTensor = data[t][0]
                             nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
@@ -576,38 +573,40 @@ class NeurASP(object):
                                 # There are latent labels for the m network, so we calculate the latent accuracy
                                 latentLabels = data[t][1][m]
                                 numLatentLabels[m] += latentLabels.numel()
-                                latentAccuracies[m] += np.count_nonzero(latentLabels == nnOutput[m][t].argmax(dim=1))
+                                latentPreds = nnOutput[m][t].argmax(dim=1)
+                                latentAccuracies[m] += np.count_nonzero(latentLabels.reshape(latentPreds.shape) == latentPreds)
 
                         else:
                             dataTensor = data[t]
                             nnOutput[m][t] = self.nnMapping[m](dataTensor.to(self.device)).detach().to('cpu')
 
-                probs = []
-                try:
-                    models = self.stableModels[obs]
-                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                        if len(nnOutput[m][t][i].size()) == 0:
-                            probs.append(int(nnOutput[m][t][i] < 0.5))
-                        else:
-                            probs.append(nnOutput[m][t][i].argmax())
-                except KeyError:
-                    for ruleIdx in range(self.mvpp['nnPrRuleNum']):
-                        m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
-                        dmvpp.parameters[ruleIdx] = nnOutput[m][t][i]
-                        if len(dmvpp.parameters[ruleIdx].size()) == 0:
-                            dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
-                                                                      1 - dmvpp.parameters[ruleIdx]])
-                            probs.append(int(nnOutput[m][t][i] < 0.5))
-                        else:
-                            probs.append(nnOutput[m][t][i].argmax())
-                    models = dmvpp.find_k_SM_under_obs(obs, k=0, opt=opt)
-                    if storeSM:
-                        self.stableModels[obs] = models
+                for b in range(len(obs)):
+                    probs = []
+                    try:
+                        models = self.stableModels[obs[b]]
+                        for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                            m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                            if len(nnOutput[m][t][b*self.e[m]+i].size()) == 0:
+                                probs.append(int(nnOutput[m][t][b*self.e[m]+i] < 0.5))
+                            else:
+                                probs.append(nnOutput[m][t][b*self.e[m]+i].argmax())
+                    except KeyError:
+                        for ruleIdx in range(self.mvpp['nnPrRuleNum']):
+                            m, i, t, j = self.mvpp['nnProb'][ruleIdx][0]
+                            dmvpp.parameters[ruleIdx] = nnOutput[m][t][b*self.e[m]+i]
+                            if len(dmvpp.parameters[ruleIdx].size()) == 0:
+                                dmvpp.parameters[ruleIdx] = torch.Tensor([dmvpp.parameters[ruleIdx],
+                                                                          1 - dmvpp.parameters[ruleIdx]])
+                                probs.append(int(nnOutput[m][t][b*self.e[m]+i] < 0.5))
+                            else:
+                                probs.append(nnOutput[m][t][b*self.e[m]+i].argmax())
+                        models = dmvpp.find_k_SM_under_obs(obs[b], k=0, opt=opt)
+                        if storeSM:
+                            self.stableModels[obs[b]] = models
 
-                if (torch.stack(probs) == models).all(dim=1).any():
-                    # The latent concept predictions form a valid model, hence the downstream prediction is correct
-                    downstreamAccuracy += 1
+                    if (torch.stack(probs) == models).all(dim=1).any():
+                        # The latent concept predictions form a valid model, hence the downstream prediction is correct
+                        downstreamAccuracy += 1
 
         for m in latentAccuracies:
             if numLatentLabels[m] > 0:
@@ -615,4 +614,4 @@ class NeurASP(object):
             else:
                 latentAccuracies[m] = 'unknown'
 
-        return downstreamAccuracy/len(dataset), latentAccuracies
+        return downstreamAccuracy/len(dataset.dataset), latentAccuracies

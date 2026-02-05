@@ -33,13 +33,15 @@ else:
 
 # Now that the seed is set, we can import the data
 trainDataset, valDataset, dprogram = get_dataset(args.task, dir_path + '/../../data/playing_cards')
+trainLoader = torch.utils.data.DataLoader(trainDataset, batch_size=64)
+valLoader = torch.utils.data.DataLoader(valDataset, batch_size=1)
 
 m = Net()
 nnMapping = {'card': m}
 optimizers = {'card': torch.optim.Adam(m.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)}
 
 NeurASPobj = NeurASP(dprogram, nnMapping, optimizers, gpu=True)
-NeurASPobj.learn(trainDataset, epoch=args.epochs, lossFunc='semantic', accStep=args.checkpoint_freq,
-                 batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset, task=args.task)
-# NeurASPobj.learn(trainDataset, epoch=args.epochs, storeSM=False, lossFunc='semantic',
+NeurASPobj.learn(trainLoader, epoch=args.epochs, lossFunc='semantic', accStep=args.checkpoint_freq,
+                 bar=True, seed=seed, valDataset=valLoader, task=args.task)
+# NeurASPobj.learn(trainDataset, epoch=args.epochs, storeSM=True, lossFunc='semantic', task='card_arithmetic',
 #                  accStep=0, batchSize=args.batch_size, bar=True, seed=seed, valDataset=valDataset)

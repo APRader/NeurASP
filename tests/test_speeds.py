@@ -61,22 +61,25 @@ def measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
         return time.perf_counter() - start_time
 
 
-def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name, gpu=False, p_num=1):
+def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name, gpu=False, p_num=1, method='same'):
     """Measure the speed of the SLASH code for an example."""
     SLASHobj = SLASH(dprogram, nnMapping, optimizers, gpu=gpu)
-    with (mock.patch.object(MVPPSlash, 'find_k_SM_under_query',
-                            time_method(MVPPSlash, 'find_k_SM_under_query', f'slash_{example_name}_model')),
+    if method == 'same':
+        sm_function = 'find_SM_with_same'
+    else:
+        sm_function = 'find_k_SM_under_query'
+    with (mock.patch.object(MVPPSlash, sm_function,
+                            time_method(MVPPSlash, sm_function, f'slash_{example_name}_model')),
           mock.patch.object(MVPPSlash, 'prob_of_interpretation',
                             time_method(MVPPSlash, 'prob_of_interpretation', f'slash_{example_name}_prob')),
           mock.patch.object(MVPPSlash, 'mvppLearnRule',
                             time_method(MVPPSlash, 'mvppLearnRule', f'slash_{example_name}_grad'))):
         start_time = time.perf_counter()
-        SLASHobj.learn(dataListLoader, 1)
-        SLASHobj.learn(dataListLoader, 1, batched_pass=True, p_num=p_num)
+        SLASHobj.learn(dataListLoader, 1, batched_pass=True, p_num=p_num, method=method)
         return time.perf_counter() - start_time
 
 
-def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, opt=False, batch_size=1):
+def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name, opt=False):
     """Measure the speed of the new implementation of NeurASP for an example."""
     NewrASPobj = NewrASP(dprogram, nnMapping, optimizers)
     with (mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
@@ -85,9 +88,8 @@ def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, ex
                             time_method(MVPPNew, 'prob_of_interpretation', f'new_{example_name}_prob')),
           mock.patch.object(MVPPNew, 'mvppLearnRule',
                             time_method(MVPPNew, 'mvppLearnRule', f'new_{example_name}_grad'))):
-        dataset = list(zip(dataList, obsList))
         start_time = time.perf_counter()
-        NewrASPobj.learn(dataset, epoch=1, opt=opt, batchSize=batch_size)
+        NewrASPobj.learn(dataset, epoch=1, opt=opt)
         return time.perf_counter() - start_time
 
 
@@ -271,7 +273,7 @@ class TestSpeeds(unittest.TestCase):
         m = Net()
         nnMapping = {'digit': m}
         optimizers = {'digit': torch.optim.Adam(m.parameters(), lr=0.001)}
-        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name, batch_size=64)
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataListLoader, example_name)
 
         save_timings(example_name, neurasp_time, newrasp_time, slash_time, seed=seed)
 
