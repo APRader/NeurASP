@@ -76,13 +76,14 @@ def measure_slash_speed(dprogram, nnMapping, optimizers, dataListLoader, example
           mock.patch.object(MVPPSlash, 'mvppLearnRule',
                             time_method(MVPPSlash, 'mvppLearnRule', f'slash_{example_name}_grad'))):
         start_time = time.perf_counter()
-        SLASHobj.learn(dataListLoader, epoch, batched_pass=True, p_num=p_num, method=method)
+        for epoch_idx in range(epoch):
+            SLASHobj.learn(dataListLoader, epoch_idx, batched_pass=True, p_num=p_num, method=method)
         return time.perf_counter() - start_time
 
 
-def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name, opt=False, epoch=1):
+def measure_newrasp_speed(dprogram, nnMapping, optimizers, dataset, example_name, opt=False, epoch=1, gpu=False):
     """Measure the speed of the new implementation of NeurASP for an example."""
-    NewrASPobj = NewrASP(dprogram, nnMapping, optimizers)
+    NewrASPobj = NewrASP(dprogram, nnMapping, optimizers,gpu=gpu)
     with (mock.patch.object(MVPPNew, 'find_k_SM_under_obs',
                             time_method(MVPPNew, 'find_k_SM_under_obs', f'new_{example_name}_model')),
           mock.patch.object(MVPPNew, 'prob_of_interpretation',
@@ -506,20 +507,41 @@ class TestSpeeds(unittest.TestCase):
         dataList = []
         obsList = []
 
-        # Choose 100 examples
+        # Turn into lists
         for idx, (data, obs) in enumerate(trainDataset):
-            if idx >= 5:
-                break
             dataList.append({'p': data['p'][0]})
             obsList.append(obs)
 
         # Original code
-        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+        neurasp_time = measure_neurasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name,
+                                             batch_size=32)
+
+        # SLASH code
+        m = Net()
+        nnMapping = {'card': m}
+        optimizers = {'card': torch.optim.Adam(m.parameters())}
+        with open('data/playing_card_facts_slash.lp') as file:
+            facts = file.read()
+        slash_program = ("suit_value(d,0). suit_value(c,13). suit_value(s,26). suit_value(h,39).\n"
+                         "player_value(P,RV+SV) :- suit(P,S), rank(P,R), rank_value(R,RV), suit_value(S,SV).\n"
+                         "result(V1+V2+V3) :- player_value(p1,V1), player_value(p2,V2), player_value(p3,V3).\n"
+                         "npp(card(1,P), [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,"
+                         "27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51]) :- player(P).\n")
+        slash_program = slash_program + facts
+        dataList_slash = [{f'p{n + 1}': dataDict['p'][n] for n in range(3)} for dataDict in dataList]
+        dataListLoader = torch.utils.data.DataLoader(list(zip(dataList_slash, obsList)), batch_size=32)
+        slash_time = measure_slash_speed(slash_program, nnMapping, optimizers, dataListLoader, example_name, p_num = 8)
 
         # New code
-        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataList, obsList, example_name)
+        m = Net()
+        nnMapping = {'card': m}
+        optimizers = {'card': torch.optim.Adam(m.parameters())}
+        dataLoader = torch.utils.data.DataLoader(trainDataset, batch_size=32)
+        newrasp_time = measure_newrasp_speed(dprogram, nnMapping, optimizers, dataLoader, example_name)
 
-        save_timings(example_name, neurasp_time, newrasp_time)
+        save_timings(example_name, neurasp_time, newrasp_time, slash_time)
+        os.remove('saved_models/unknown_stable_models.pkl')
 
         # New code should be faster than existing code
         assert (newrasp_time < neurasp_time)
+        assert (newrasp_time < slash_time)

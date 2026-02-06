@@ -2,10 +2,10 @@
 suit_value(d,0). suit_value(c,13). suit_value(s,26). suit_value(h,39).
 
 % Result calculation
-result(X) :- suit(0,S1), suit(1,S2), suit(2,S3), suit_value(S1,SV1), suit_value(S2,SV2), suit_value(S3,SV3),
-             rank(0,R1), rank(1,R2), rank(2,R3), rank_value(R1,V1), rank_value(R2,V2), rank_value(R3,V3),
-             X = V1 + SV1 + V2 + SV2 + V3 + SV3.
-:- result(X), result(Y), X!=Y.
+player_value(P,RV+SV) :- suit(P,S), rank(P,R), rank_value(R,RV), suit_value(S,SV).
+sum(0,V) :- player_value(0,V).
+sum(P,V1+V2) :- sum(P-1,V1), player_value(P,V2).
+result(X) :- sum(2,X).
 
 
 % Neural predicate

@@ -270,6 +270,10 @@ class NeurASP(object):
                 for key in list(data.keys()):
                     data[self.constReplacement(key)] = data.pop(key)
 
+                # Put obs in list if data is unbatched
+                if isinstance(obs, str):
+                    obs = [obs]
+
                 # Step 1: get the output of each neural network and initialize the gradients
                 nnOutput = {}
                 latentLabels = {}

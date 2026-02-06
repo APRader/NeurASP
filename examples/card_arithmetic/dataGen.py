@@ -75,7 +75,7 @@ def split_dataset(data_file):
     return train_data, val_data
 
 
-def get_dataset(task_name, image_folder):
+def get_dataset(task_name, image_folder, train_size = 10000):
     transform = transforms.Compose([
         transforms.ToPILImage(),
         transforms.Resize((274, 174)),
@@ -86,7 +86,7 @@ def get_dataset(task_name, image_folder):
     # test_data = pd.read_csv(dir_path + f'/data/{task_name}_labels_test.csv')
 
     trainDataset = CardArithmetic(f'{image_folder}/train',
-                                  train_data, transform,
+                                  train_data[:train_size], transform,
                                   f'{image_folder}/train/playing_card_labels_train.csv')
 
     valDataset = CardArithmetic(f'{image_folder}/train',
