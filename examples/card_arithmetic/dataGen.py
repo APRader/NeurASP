@@ -68,7 +68,7 @@ class CardArithmetic(Dataset):
 def split_dataset(data_file):
     data = pd.read_csv(data_file)
     val_data = data.sample(1000).reset_index(drop=True)
-    val_idxs = set(pd.concat([val_data.iloc[:, 0], val_data.iloc[:, 1]]).unique())
+    val_idxs = set(pd.concat([val_data.iloc[:, i] for i in range(len(data.columns) - 1)]).unique())
     # As images might be in more than one row, we need to find all rows that include a val image
     val_rows = data.iloc[:, :-1].isin(val_idxs).any(axis=1)
     train_data = data[~val_rows].sample(10000).reset_index(drop=True)
@@ -101,7 +101,7 @@ def get_dataset(task_name, image_folder, train_size = 10000):
     return trainDataset, valDataset, facts + '\n\n' + task_rules
 
 
-def generate_dataset_from_asp(task_name, image_folder):
+def generate_dataset_from_asp(task_name, image_folder, sample_size=15000):
     """ Generate a dataset from an ASP task specification."""
     with open(dir_path + '/data/playing_card_facts.lp') as file:
         facts = file.read()
@@ -146,14 +146,14 @@ def generate_dataset_from_asp(task_name, image_folder):
     print(f"There are {len(set(dataset['result']))} unique labels.")
 
     # Take at most 15,000 rows
-    if len(dataset) > 15_000:
-        semantic_dataset = pd.DataFrame(dataset).sample(n=15_000)
+    if len(dataset) > sample_size:
+        semantic_dataset = pd.DataFrame(dataset).sample(n=sample_size)
     else:
         semantic_dataset = pd.DataFrame(dataset)
-    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
+    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder, sample_size)
 
 
-def generate_dataset_from_fun(fun, num_players, task_name, image_folder):
+def generate_dataset_from_fun(fun, num_players, task_name, image_folder, sample_size=15000):
     """ Generate a dataset using a function that calculates the result given concepts."""
     suits = ['h', 'c', 's', 'd']
     ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'j', 'q', 'k', 'a']
@@ -161,14 +161,14 @@ def generate_dataset_from_fun(fun, num_players, task_name, image_folder):
     for suit in suits:
         for rank in ranks:
             concepts.append(rank + suit)
-    data = np.random.choice(concepts, size=(15000, num_players))
+    data = np.random.choice(concepts, size=(sample_size, num_players))
     results = np.apply_along_axis(func1d=fun, axis=1, arr=data)
     results = results.reshape(-1, 1)
     data = np.hstack([data, results])
     column_names = [f'player_{i + 1}' for i in range(num_players)] + ['result']
     semantic_dataset = pd.DataFrame(data, columns=column_names)
     print(f"There are {len(set(semantic_dataset['result']))} unique labels.")
-    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder)
+    convert_semantic_to_numeric(semantic_dataset, task_name, image_folder, sample_size)
 
 
 def card_arithmetic_unique(data_row):
@@ -178,14 +178,21 @@ def card_arithmetic_unique(data_row):
     rankuit_to_num = np.vectorize(lambda rankuit: rank_values[rankuit[:-1]] + suit_values[rankuit[-1]])
     return np.sum(rankuit_to_num(data_row))
 
+def card_arithmetic(data_row):
+    suit_values = {'h': 4, 'c': 2, 's': 3, 'd': 1}
+    rank_values = {'2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10,
+                   'j': 11, 'q': 12, 'k': 13, 'a': 14}
+    rankuit_to_num = np.vectorize(lambda rankuit: rank_values[rankuit[:-1]] * suit_values[rankuit[-1]])
+    return np.sum(rankuit_to_num(data_row))
 
-def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
+
+def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder, sample_size):
     """Take a dataset with semantic entries (e.g. 5d) and replace them with random image ids of that card."""
     image_names = pd.read_csv(f'{image_folder}/playing_card_labels.csv')
     image_labels = pd.DataFrame()
     final_labels = pd.DataFrame()
 
-    while len(final_labels) < 15_000:
+    while len(final_labels) < sample_size:
         for column in semantic_dataset.columns:
             if column == 'result':
                 image_labels[column] = semantic_dataset[column]
@@ -196,12 +203,12 @@ def convert_semantic_to_numeric(semantic_dataset, task_name, image_folder):
                     ['img'].sample().item())
         final_labels = pd.concat([final_labels, image_labels])
 
-    final_labels = final_labels.sample(n=15_000)
+    final_labels = final_labels.sample(n=sample_size)
     final_labels.to_csv(f'{task_name}_labels.csv', index=False)
     print(f"Wrote dataset to {task_name}_labels.csv")
 
 
 if __name__ == '__main__':
-    generate_dataset_from_asp('card_arithmetic_unique_2p', image_folder=dir_path + '/../../data/playing_cards/test')
-    # generate_dataset_from_fun(card_arithmetic_unique, 4, 'card_arithmetic_unique_4p',
-    #                           image_folder=dir_path + '/../../data/playing_cards')
+    # generate_dataset_from_asp('card_arithmetic_4p', image_folder=dir_path + '/../../data/playing_cards/train')
+    generate_dataset_from_fun(card_arithmetic, 4, 'card_arithmetic_4p',
+                              dir_path + '/../../data/playing_cards/train', 30000)
