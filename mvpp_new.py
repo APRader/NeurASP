@@ -227,13 +227,14 @@ class MVPP(object):
         """
         program = self.pi_prime + obs + '\n'
         # for each probabilistic rule with n atoms, add n weak constraints
-        for ruleIdx, atoms in enumerate(self.pc):
-            for atomIdx, atom in enumerate(atoms):
-                if self.parameters[ruleIdx][atomIdx] < 0.00674:
+        for ruleIdx, atom in enumerate(self.pc):
+            for valueIdx, value in enumerate(self.pc[atom]):
+                if self.parameters[ruleIdx][valueIdx] < 0.00674:
                     penalty = -1000 * -5
                 else:
-                    penalty = int(-1000 * math.log(self.parameters[ruleIdx][atomIdx]))
-                program += ':~ {}. [{}, {}, {}]\n'.format(atom, penalty, ruleIdx, atomIdx)
+                    penalty = int(-1000 * math.log(self.parameters[ruleIdx][valueIdx]))
+                atom_name = f"{atom.split('/')[0]}({atom.split(':')[1]},{value})"
+                program += ':~ {}. [{}, {}, {}]\n'.format(atom_name, penalty, ruleIdx, valueIdx)
 
         clingo_control = Control(['--warn=none', '-t', '8'])
         models = []
@@ -302,7 +303,7 @@ class MVPP(object):
         net_confs = torch.stack(self.parameters)
         denominator = sum(probs)
         if denominator == 0:
-            return [0 for _ in range(num_out)]
+            return torch.zeros(len(self.learnable), num_out)
 
         concept_indices = torch.arange(len(net_confs)).repeat(len(models), 1)
         concept_probs = net_confs[concept_indices, models]
