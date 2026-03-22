@@ -6,7 +6,7 @@ import statistics
 from collections import defaultdict
 
 
-def create_acc_graph(filename='results.jsonl', acc='downstream'):
+def create_acc_graph(filename='results.jsonl', acc='downstream', seeds=None):
     """
     Imports data from a JSON Lines file, groups by seed, and generates a line graph
     of validation accuracy vs. epoch, using hyperparameters for the legend.
@@ -44,8 +44,8 @@ def create_acc_graph(filename='results.jsonl', acc='downstream'):
 
     df = pd.DataFrame(data)
 
-    # Remove any rows with missing essential plotting data
-    # df.dropna(subset=['epoch', 'val_accuracy', 'seed', 'batch_size', 'lr', 'weight_decay'], inplace=True)
+    if seeds is not None:
+        df = df[df['seed'].isin(seeds)]
 
     if df.empty:
         print("Error: DataFrame is empty after filtering for required columns.")
@@ -260,7 +260,8 @@ def format_time(value):
 
 
 if __name__ == "__main__":
-    # create_acc_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl")
+    create_acc_graph("../examples/card_arithmetic/results/card_arithmetic_unique_2p_results.jsonl",
+                     acc='latent', seeds=[87603, 82275, 83227, 59207, 87744])
     # create_acc_graph("../examples/card_arithmetic/results/card_arithmetic_3p_results.jsonl", acc='latent')
     # create_time_graph("results/synthetic_timings.jsonl")
-    generate_latex_table('results/spikesaurus_timings.jsonl', 'spikesaurus_timings.tex')
+    # generate_latex_table('results/spikesaurus_timings.jsonl', 'spikesaurus_timings.tex')

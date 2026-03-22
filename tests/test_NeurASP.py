@@ -350,6 +350,7 @@ class TestNeurASP(unittest.TestCase):
             NewrASPobj.stableModels = stable_models
             NewrASPobj.mvpp['nnPrRuleNum'] = 16
             NewrASPobj.mvpp['nnProb'] = nn_prob
+            NewrASPobj.e = {'test': 8, 'test_latent': 8}
             down_acc, latent_acc = NewrASPobj.calculate_accuracies(dataset, mock_mvpp, True, False)
 
             # Only the second out of the two inputs yields the correct prediction
@@ -358,3 +359,81 @@ class TestNeurASP(unittest.TestCase):
             assert latent_acc['test'] == 'unknown'
             # The test_latent network gets half of the latent labels correct
             assert latent_acc['test_latent'] == 8/16
+
+    def test_gradient(self):
+        """Test that gradient is calculated correctly"""
+        # 5 concepts, 5 choices
+        pi_prime = ("1{test(1,i1,1); test(1,i1,2); test(1,i1,3); test(1,i1,4); test(1,i1,5)}1.\n"
+                    "1{test(1,i2,1); test(1,i2,2); test(1,i2,3); test(1,i2,4); test(1,i2,5)}1.\n"
+                    "1{test(1,i3,1); test(1,i3,2); test(1,i3,3); test(1,i3,4); test(1,i3,5)}1.\n"
+                    "1{test(1,i4,1); test(1,i4,2); test(1,i4,3); test(1,i4,4); test(1,i4,5)}1.\n"
+                    "1{test(1,i5,1); test(1,i5,2); test(1,i5,3); test(1,i5,4); test(1,i5,5)}1.\n"
+                    "result(N) :- test(1,i1,N1), test(1,i2,N2), test(1,i3,N3), test(1,i4,N4), test(1,i5,N5), "
+                    "N=N1*N2+N3+N4+N5.")
+        obs = ":- not result(39)."
+        pc = [
+            ['test(1,i1,1)', 'test(1,i1,2)', 'test(1,i1,3)', 'test(1,i1,4)', 'test(1,i1,5)'],
+            ['test(1,i2,1)', 'test(1,i2,2)', 'test(1,i2,3)', 'test(1,i2,4)', 'test(1,i2,5)'],
+            ['test(1,i3,1)', 'test(1,i3,2)', 'test(1,i3,3)', 'test(1,i3,4)', 'test(1,i3,5)'],
+            ['test(1,i4,1)', 'test(1,i4,2)', 'test(1,i4,3)', 'test(1,i4,4)', 'test(1,i4,5)'],
+            ['test(1,i5,1)', 'test(1,i5,2)', 'test(1,i5,3)', 'test(1,i5,4)', 'test(1,i5,5)']]
+        pc_new = {'test/3:1,i1': ['1', '2', '3', '4', '5'], 'test/3:1,i2': ['1', '2', '3', '4', '5'],
+                  'test/3:1,i3': ['1', '2', '3', '4', '5'], 'test/3:1,i4': ['1', '2', '3', '4', '5'],
+                  'test/3:1,i5': ['1', '2', '3', '4', '5']}
+        parameters = [[0.2, 0.4, 0.1, 0.1, 0.2], [0.1, 0.2, 0.1, 0.4, 0.2], [0.1, 0.2, 0.1, 0.4, 0.2],
+                      [0.2, 0.0, 0.0, 0.4, 0.4], [0.5, 0.3, 0.0, 0.2, 0.0]]
+
+        mock_return = (pc, parameters, False, "mock_asp", pi_prime, "mock_remain_probs")
+        mock_return_new = (pc_new, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", pi_prime,
+                           "mock_remain_probs")
+        # Test NeurASP
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
+              mock.patch.object(MVPP, 'normalize_probs'),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
+            mvpp = MVPP('')
+            gradient = mvpp.gradient(0, 3, obs)
+            mvpp_new = MVPPNew('')
+            new_gradient = mvpp_new.gradient(0, 3, obs)
+        np.testing.assert_almost_equal(-5, gradient)
+        np.testing.assert_almost_equal(-5, new_gradient)
+
+    def test_gradient_given_models(self):
+        """Test that gradient is calculated correctly given models"""
+        # 4 concepts, 7 choices, 7 models
+        pc = [['test(1,i1,1)', 'test(1,i1,2)', 'test(1,i1,3)', 'test(1,i1,4)', 'test(1,i1,5)', 'test(1,i1,6)',
+               'test(1,i1,7)'],
+              ['test(1,i2,1)', 'test(1,i2,2)', 'test(1,i2,3)', 'test(1,i2,4)', 'test(1,i2,5)', 'test(1,i2,6)',
+               'test(1,i2,7)'],
+              ['test(1,i3,1)', 'test(1,i3,2)', 'test(1,i3,3)', 'test(1,i3,4)', 'test(1,i3,5)', 'test(1,i3,6)',
+               'test(1,i3,7)'],
+              ['test(1,i4,1)', 'test(1,i4,2)', 'test(1,i4,3)', 'test(1,i4,4)', 'test(1,i4,5)', 'test(1,i4,6)',
+               'test(1,i5,7)']]
+        parameters = [[0.3, 0.0, 0.2, 0.1, 0.1, 0.1, 0.2], [0.2, 0.2, 0.1, 0.1, 0.1, 0.1, 0.2],
+                      [0.0, 0.2, 0.1, 0.1, 0.2, 0.2, 0.2], [0.1, 0.1, 0.3, 0.2, 0.1, 0.2, 0.0]]
+
+        models = [['test(1,i1,7)', 'test(1,i2,6)', 'test(1,i3,1)', 'test(1,i4,5)'],
+                  ['test(1,i1,2)', 'test(1,i2,4)', 'test(1,i3,5)', 'test(1,i4,6)'],
+                  ['test(1,i1,7)', 'test(1,i2,2)', 'test(1,i3,2)', 'test(1,i4,4)'],
+                  ['test(1,i1,5)', 'test(1,i2,7)', 'test(1,i3,1)', 'test(1,i4,4)'],
+                  ['test(1,i1,6)', 'test(1,i2,7)', 'test(1,i3,5)', 'test(1,i4,6)'],
+                  ['test(1,i1,4)', 'test(1,i2,4)', 'test(1,i3,6)', 'test(1,i4,7)'],
+                  ['test(1,i1,3)', 'test(1,i2,2)', 'test(1,i3,3)', 'test(1,i4,5)']]
+        models_new = torch.IntTensor([[6, 5, 0, 4], [1, 3, 4, 5], [6, 1, 1, 3], [4, 6, 0, 3], [5, 6, 4, 5],
+                                      [3, 3, 5, 6], [2, 1, 2, 4]])
+        mock_return = (pc, parameters, False, "mock_asp", "mock_pi_prime", "mock_remain_probs")
+        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp",
+                           "mock_pi_prime", "mock_remain_probs")
+        # Test NeurASP
+        with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
+              mock.patch.object(MVPP, 'normalize_probs'),
+              mock.patch.object(MVPPNew, 'parse', return_value=mock_return_new),
+              mock.patch.object(MVPPNew, 'normalize_probs')):
+            mvpp = MVPP('')
+            neurasp_gradients = mvpp.gradient_given_models(1,  models)
+            mvpp_new = MVPPNew('')
+            newrasp_gradients = mvpp_new.gradient_given_models(1,  models_new)
+        gradients = [-7.142857142857143, -4.285714285714286, -7.142857142857143, -1.4285714285714286,
+                     -7.142857142857143, -4.285714285714286, -4.285714285714286]
+        np.testing.assert_almost_equal(gradients, neurasp_gradients)
+        np.testing.assert_almost_equal(gradients, newrasp_gradients)

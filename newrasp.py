@@ -27,7 +27,7 @@ class NeurASP(object):
                 self.device = torch.device('cuda')
             elif torch.backends.mps.is_available():
                 self.device = torch.device('mps')
-
+        print('Device: ', self.device)
 
         self.dprogram = dprogram
         self.const = {}  # the mapping from c to v for rule #const c=v.
@@ -240,6 +240,16 @@ class NeurASP(object):
         @param valDataset: a dataset with validation labels for testing accuracies
         @param task: a string representing the name of the task, used when logging results
         """
+        # Set info variables for logging
+        if hasattr(dataset, 'dataset'):
+            # Dataset is a dataloader
+            dataset_name = type(dataset.dataset).__name__
+        else:
+            dataset_name = type(dataset).__name__
+        if hasattr(dataset, 'batch_size'):
+            batch_size = dataset.batch_size
+        else:
+            batch_size = 'unknown'
 
         # If storeSM is true, we try to load stable models from the corresponding file
         # Otherwise, we will save it into a file at the end of the first epoch
@@ -248,6 +258,7 @@ class NeurASP(object):
             try:
                 with open(f'saved_models/{task}_stable_models.pkl', 'rb') as fp:
                     self.stableModels = pickle.load(fp)
+                    print('Using cached stable model file.')
             except FileNotFoundError:
                 savePickle = True
         bestDownAcc = 0
@@ -377,9 +388,9 @@ class NeurASP(object):
 
                 # Calculate and print training accuracy every accStep steps
                 if accStep != 0 and (epochIdx == 0 and dataIdx == 0 or (dataIdx + 1) % accStep == 0):
-                    results = {'algorithm': 'NeurASP', 'dataset': type(dataset).__name__, 'task': task,
+                    results = {'algorithm': 'NeurASP', 'dataset': dataset_name, 'task': task,
                                'seed': seed,
-                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': dataset.batch_size}
+                               'epoch': epochIdx, 'step': dataIdx + 1, 'batch_size': batch_size}
                     print(f"\nEpoch {epochIdx}, step {dataIdx + 1}:")
 
                     for m in self.nnMapping:
@@ -563,6 +574,8 @@ class NeurASP(object):
             for data, obs in dataset:
                 for key in list(data.keys()):
                     data[self.constReplacement(key)] = data.pop(key)
+                if isinstance(obs, str):
+                    obs = [obs]
 
                 nnOutput = {}
                 for m in self.nnOutputs:
@@ -618,4 +631,10 @@ class NeurASP(object):
             else:
                 latentAccuracies[m] = 'unknown'
 
-        return downstreamAccuracy/len(dataset.dataset), latentAccuracies
+        if hasattr(dataset, 'dataset'):
+            # Dataset is a dataloader
+            dataset_len = len(dataset.dataset)
+        else:
+            dataset_len = len(dataset)
+
+        return downstreamAccuracy/dataset_len, latentAccuracies
