@@ -554,7 +554,7 @@ class NeurASP(object):
             print(
                 'The accuracy for constraint {} is {}'.format(programIdx + 1, float(count[programIdx]) / len(dataList)))
 
-    def calculate_accuracies(self, dataset, dmvpp, storeSM, opt):
+    def calculate_accuracies(self, dataset, dmvpp, storeSM=True, opt=False):
         """
         Calculates latent and downstream accuracies of all neural networks in task.
         @param dataset: A dataset consisting of inputs and observations, and optionally latent labels
@@ -567,6 +567,7 @@ class NeurASP(object):
         downstreamAccuracy = 0
         for func in self.nnMapping:
             self.nnMapping[func].eval()
+            self.nnMapping[func].to(self.device)
             latentAccuracies[func] = 0
             numLatentLabels[func] = 0
 

@@ -3,6 +3,8 @@ import torch
 import random
 import os
 
+import numpy as np
+
 from newrasp import NeurASP
 from examples.follow_suit.network import Net
 from dataGen import get_dataset
@@ -17,24 +19,24 @@ parser.add_argument('--learning_rate', '--lr', type=float, default=0.01)
 parser.add_argument('--weight_decay', type=float, default=0)
 parser.add_argument('--checkpoint_freq', type=int, default=1000)
 parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--data_dir', type=str, default="/data/public/playing_cards")
 parser.add_argument('--output_dir', type=str, default="train_output")
 parser.add_argument('--seed', type=int)
 args = parser.parse_args()
 
 if args.seed:
     seed = args.seed
-    random.seed(seed)
-    torch.manual_seed(seed)
 else:
     # We generate a random number as the seed, so that the experiment run can still be reproduced
     seed = random.randint(0,100000)
-    torch.manual_seed(seed)
-    random.seed(seed)
+torch.manual_seed(seed)
+random.seed(seed)
+np.random.seed(seed)
 
 # Now that the seed is set, we can import the data
-trainDataset, valDataset, dprogram = get_dataset(args.task, dir_path + '/../../data/playing_cards')
-trainLoader = torch.utils.data.DataLoader(trainDataset, batch_size=64)
-valLoader = torch.utils.data.DataLoader(valDataset, batch_size=1)
+trainDataset, valDataset, dprogram = get_dataset(args.task, dir_path + args.data_dir)
+trainLoader = torch.utils.data.DataLoader(trainDataset, batch_size=args.batch_size)
+valLoader = torch.utils.data.DataLoader(valDataset, batch_size=args.batch_size)
 
 m = Net()
 nnMapping = {'card': m}
