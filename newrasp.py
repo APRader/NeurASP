@@ -477,41 +477,40 @@ class NeurASP(object):
         singleAccuracy = 100. * singleCorrect / singleTotal
         return accuracy, singleAccuracy
 
-    # We interprete the most probable stable model(s) as the prediction of the inference mode
-    # and check the accuracy of the inference mode by checking whether the obs is satisfied by the prediction
-    def testInferenceResults(self, dataList, obsList):
+    # We interpret the most probable stable model(s) as the prediction of the inference mode
+    # and calculate the accuracy by checking whether the obs is satisfied by the prediction
+    def testInferenceResults(self, dataset):
         """ Return a real number in [0,1] denoting the accuracy
-        @param dataList: a list of dictionaries, where each dictionary maps terms to tensors/np-arrays
-        @param obsList: a list of strings, where each string is a set of constraints denoting an observation
+        @param dataset: a dataset consisting of inputs and observations,
+                        each input is a dict, mapping terms to a tensor,
+                        each observation is a string, denoting a set of constraints
         """
-        assert len(dataList) == len(obsList), 'Error: the length of dataList does not equal to the length of obsList'
 
         correct = 0
-        for dataIdx, data in enumerate(dataList):
+        for data, obs in dataset:
             models = self.infer(data, obs=':- mistake.', mvpp=self.mvpp['program_asp'])
             for model in models:
-                if self.satisfy(model, obsList[dataIdx]):
+                if self.satisfy(model, obs):
                     correct += 1
                     break
-        accuracy = 100. * correct / len(dataList)
+        accuracy = 100. * correct / len(dataset)
         return accuracy
 
-    def testConstraint(self, dataList, obsList, mvppList):
+    def testConstraint(self, dataset, mvppList):
         """
-        @param dataList: a list of dictionaries, where each dictionary maps terms to tensors/np-arrays
-        @param obsList: a list of strings, where each string is a set of constraints denoting an observation
+        @param dataset: a dataset consisting of inputs and observations,
+                        each input is a dict, mapping terms to a tensor,
+                        each observation is a string, denoting a set of constraints
         @param mvppList: a list of MVPP programs (each is a string)
         """
-        assert len(dataList) == len(obsList), 'Error: the length of dataList does not equal to the length of obsList'
-
-        # we evaluate all nerual networks
+        # we evaluate all neural networks
         for func in self.nnMapping:
             self.nnMapping[func].eval()
 
         # we count the correct prediction for each mvpp program
         count = [0] * len(mvppList)
 
-        for dataIdx, data in enumerate(dataList):
+        for data, obs in dataset:
             # data is a dictionary. we need to edit its key if the key contains a defined const c
             # where c is defined in rule #const c=v.
             for key in list(data.keys()):
@@ -535,12 +534,12 @@ class NeurASP(object):
             # Step 3: check whether each MVPP program is satisfied
             for programIdx, program in enumerate(mvppList):
                 # if the program has weak constraints
-                if re.search(r':~.+\.[ \t]*\[.+\]', program) or re.search(r':~.+\.[ \t]*\[.+\]', obsList[dataIdx]):
+                if re.search(r':~.+\.[ \t]*\[.+\]', program) or re.search(r':~.+\.[ \t]*\[.+\]', obs):
                     choiceRules = ''
                     for ruleIdx in range(self.mvpp['nnPrRuleNum']):
                         choiceRules += '1{' + '; '.join(self.mvpp['atom'][ruleIdx]) + '}1.\n'
                     mvpp = MVPP(program + choiceRules)
-                    models = mvpp.find_all_opt_SM_under_obs_WC(obs=obsList[dataIdx])
+                    models = mvpp.find_all_opt_SM_under_obs_WC(obs=obs)
                     models = [set(model) for model in models]  # each model is a set of atoms
                     targetAtoms = aspFacts.split('.\n')
                     targetAtoms = set([atom.strip().replace(' ', '') for atom in targetAtoms if atom.strip()])
@@ -548,11 +547,11 @@ class NeurASP(object):
                         count[programIdx] += 1
                 else:
                     mvpp = MVPP(aspFacts + program)
-                    if mvpp.find_one_SM_under_obs(obs=obsList[dataIdx]):
+                    if mvpp.find_one_SM_under_obs(obs=obs):
                         count[programIdx] += 1
         for programIdx, program in enumerate(mvppList):
             print(
-                'The accuracy for constraint {} is {}'.format(programIdx + 1, float(count[programIdx]) / len(dataList)))
+                'The accuracy for constraint {} is {}'.format(programIdx + 1, float(count[programIdx]) / len(dataset)))
 
     def calculate_accuracies(self, dataset, dmvpp, storeSM=True, opt=False):
         """

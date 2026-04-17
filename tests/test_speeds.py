@@ -150,8 +150,9 @@ class TestSpeeds(unittest.TestCase):
         selection_mask = torch.tensor([[True for _ in range(num_concepts)] for _ in range(num_inputs)])
 
         mock_return = (pc, parameters, False, "mock_asp", "mock_pi", "mock_remain_probs")
-        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters], False, "mock_asp", "mock_pi",
-                       "mock_remain_probs")
+        mock_return_new = (pc, [torch.Tensor(parameter) for parameter in parameters],
+                           [[True for _ in range(num_concepts)] for _ in range(num_inputs)], "mock_asp", "mock_pi",
+                           "mock_remain_probs")
 
         with (mock.patch.object(MVPP, 'parse', return_value=mock_return),
               mock.patch.object(MVPP, 'normalize_probs')):
@@ -186,7 +187,7 @@ class TestSpeeds(unittest.TestCase):
             start_time = time.perf_counter()
             probs = mvpp_new.prob_of_interpretation(models_new)
             newrasp_prob_time = time.perf_counter() - start_time
-            mvpp_new.mvppLearnRule(models_new, torch.Tensor(probs), 5)
+            mvpp_new.mvppLearnRule(models_new, torch.Tensor(probs), num_concepts)
             newrasp_grad_time = time.perf_counter() - newrasp_prob_time - start_time
 
         print(f"Old prob time: {neurasp_prob_time}")
